@@ -19,7 +19,7 @@ type Game struct {
 }
 
 func (g *Game) Update() error {
-	g.world.Update()
+	g.world.DebugUpdate()
 	return nil
 }
 
