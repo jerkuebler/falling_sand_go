@@ -1,5 +1,14 @@
 package Material
 
+type Phase int
+
+const (
+	Empty Phase = iota
+	Solid
+	Liquid
+	Gas
+)
+
 type Grain int
 
 const (
@@ -8,13 +17,29 @@ const (
 	Water
 )
 
+var grainPhases = map[Grain]Phase{
+	Blank: Empty,
+	Sand:  Solid,
+	Water: Liquid,
+}
+
+var grainColors = map[Grain][]byte{
+	Blank: {0x00, 0x00, 0x00, 0xff},
+	Sand:  {0xde, 0xbd, 0x1a, 0xff},
+	Water: {0x00, 0x00, 0xff, 0xff},
+}
+
 func (g Grain) GetColor() []byte {
-	switch g {
-	case Sand:
-		return []byte{0xde, 0xbd, 0x1a, 0xff} // RGBA for sand
-	case Water:
-		return []byte{0x00, 0x00, 0xff, 0xff} // RGBA for water
-	default:
-		return []byte{0x00, 0x00, 0x00, 0xff} // RGBA for blank
+	if color, ok := grainColors[g]; ok {
+		return color
 	}
+	return grainColors[Blank]
+}
+
+func (g Grain) GetPhase() Phase {
+
+	if phase, ok := grainPhases[g]; ok {
+		return phase
+	}
+	return Empty
 }
