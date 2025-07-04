@@ -57,12 +57,7 @@ func (w *World) Update() {
 
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
-			switch w.area[y*w.width+x] {
-			case 1:
-				w.updateSand(x, y)
-			case 2:
-				w.updateWater(x, y)
-			}
+			w.updateFuncs(x, y)
 		}
 	}
 	w.area = w.next
@@ -94,54 +89,34 @@ func (w *World) handlePressedKeys() {
 	}
 }
 
-func (w *World) updateSand(x, y int) {
+type setterFunctions func(*World, int, int) bool
 
-	if w.isBottomBound(y) {
-		w.setNextGrain(x, y, utils.Hold) // If at the bottom edge, stay in place
-		return
-	}
-
-	if w.directionalGrainCheck(x, y, utils.Below, Material.Blank) {
-		w.setNextGrain(x, y, utils.Below) // If the cell below is empty, move down
-		return
-	}
-
-	if w.isGrain(x, y, utils.Below, Material.Water) {
-		w.setNextGrain(x, y, utils.Below)
-		return
-	}
-
-	// If the cell below and to the left/right is empty, move diagonally
-	if w.diagonalGrainCheck(x, y, Material.Blank) {
-		return
-	}
-
-	// If no movement is possible, stay in place
-	w.setNextGrain(x, y, utils.Hold)
+var grainFuncs = map[Material.Grain][]setterFunctions{
+	Material.Sand: {
+		(*World).holdAtBottom,
+		(*World).trySetBelow,
+		(*World).trySetBelowWater,
+		(*World).trySetDiagonal,
+		(*World).defaultHold,
+	},
+	Material.Water: {
+		(*World).holdAtBottom,
+		(*World).trySetBelow,
+		(*World).trySetDiagonal,
+		(*World).trySetLateral,
+		(*World).defaultHold,
+	},
 }
 
-func (w *World) updateWater(x, y int) {
-	if w.isBottomBound(y) {
-		w.setNextGrain(x, y, utils.Hold) // If at the bottom edge, stay in place
-		return
+func (w *World) updateFuncs(x, y int) {
+	selfMaterial := w.getCurrentGrain(x, y)
+
+	for _, setFunc := range grainFuncs[selfMaterial] {
+		if setFunc(w, x, y) {
+			return
+		}
 	}
-
-	// If the cell below is empty, move down
-	if w.trySetDirectional(x, y, utils.Below, Material.Blank) {
-		return
-	}
-
-	// If the cell below and to the left/right is empty, move diagonally
-	if w.diagonalGrainCheck(x, y, Material.Blank) {
-		return
-	}
-
-	if w.lateralGrainCheck(x, y, Material.Blank) {
-		return
-	}
-
-	w.holdOrRise(x, y)
-
+	panic("The material update function failed somehow. Good luck.")
 }
 
 func (w *World) holdOrRise(x, y int) {
@@ -156,6 +131,41 @@ func (w *World) holdOrRise(x, y int) {
 	}
 }
 
+func (w *World) defaultHold(x, y int) bool {
+	selfPhase := w.getCurrentGrain(x, y).GetPhase()
+	if selfPhase == Material.Liquid {
+		w.holdOrRise(x, y)
+		return true
+	}
+	w.setNextGrain(x, y, utils.Hold) // If at the bottom edge, stay in place
+	return true
+}
+
+func (w *World) holdAtBottom(x, y int) bool {
+	selfPhase := w.getCurrentGrain(x, y).GetPhase()
+	if w.isBottomBound(y) && selfPhase == Material.Liquid {
+		w.holdOrRise(x, y)
+		return true
+	}
+	if w.isBottomBound(y) {
+		w.setNextGrain(x, y, utils.Hold) // If at the bottom edge, stay in place
+		return true
+	}
+	return false
+}
+
+func (w *World) trySetBelowWater(x, y int) bool {
+	if w.isGrain(x, y, utils.Below, Material.Water) {
+		w.setNextGrain(x, y, utils.Below)
+		return true
+	}
+	return false
+}
+
+func (w *World) trySetBelow(x, y int) bool {
+	return w.trySetDirectional(x, y, utils.Below, Material.Blank)
+}
+
 func (w *World) trySetDirectional(x, y int, dir utils.Direction, checkFor Material.Grain) bool {
 	if w.directionalGrainCheck(x, y, dir, checkFor) {
 		w.setNextGrain(x, y, dir)
@@ -168,30 +178,30 @@ func (w *World) directionalGrainCheck(x, y int, dir utils.Direction, checkFor Ma
 	return w.isGrain(x, y, dir, checkFor) && w.isNextGrain(x, y, dir, checkFor)
 }
 
-func (w *World) lateralGrainCheck(x, y int, checkFor Material.Grain) bool {
+func (w *World) trySetLateral(x, y int) bool {
 	firstDir, secondDir := utils.RandomLateral()
 	dx, _ := firstDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir, checkFor) {
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir, Material.Blank) {
 		w.setNextGrain(x, y, firstDir)
 		return true
 	}
 	dx, _ = secondDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir, checkFor) {
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir, Material.Blank) {
 		w.setNextGrain(x, y, secondDir)
 		return true
 	}
 	return false
 }
 
-func (w *World) diagonalGrainCheck(x, y int, checkFor Material.Grain) bool {
+func (w *World) trySetDiagonal(x, y int) bool {
 	firstDir, secondDir := utils.RandomDownDiagonal()
 	dx, _ := firstDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir, checkFor) {
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir, Material.Blank) {
 		w.setNextGrain(x, y, firstDir)
 		return true
 	}
 	dx, _ = secondDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir, checkFor) {
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir, Material.Blank) {
 		w.setNextGrain(x, y, secondDir)
 		return true
 	}
@@ -205,9 +215,6 @@ func (w *World) nextNearestBlankAbove(x, y int) int {
 	}
 	return dy
 }
-
-// TODO: Fold other checking functions into one
-// func (w *World) isValidMove(x, y int, dir Direction, checkFor Material.Grain) {}
 
 func (w *World) isNextGrain(x, y int, dir utils.Direction, checkFor Material.Grain) bool {
 	dx, dy := dir.Delta()
