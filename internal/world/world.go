@@ -73,13 +73,13 @@ func (w *World) HandlePressedKeys() {
 
 func (w *World) UpdateSand(x, y int, next []Material.Grain) {
 
-	if w.BottomScreenCheck(y) {
-		w.SetRelativePosition(x, y, Hold, next) // If at the bottom edge, stay in place
+	if w.IsBottomBound(y) {
+		w.SetNextGrain(x, y, Hold, next) // If at the bottom edge, stay in place
 		return
 	}
 
-	if w.CheckRelativePosition(x, y, Below, Material.Blank) {
-		w.SetRelativePosition(x, y, Below, next) // If the cell below is empty, move down
+	if w.IsGrain(x, y, Below, Material.Blank) {
+		w.SetNextGrain(x, y, Below, next) // If the cell below is empty, move down
 		return
 	}
 
@@ -87,28 +87,28 @@ func (w *World) UpdateSand(x, y int, next []Material.Grain) {
 	secondDir := firstDir * -1
 
 	// If the cell below and to the left/right is empty, move diagonally
-	if w.DiagonalMoveCheck(x, y, firstDir, Material.Blank) {
-		w.SetDiagonalPosition(x, y, firstDir, next)
+	if w.DiagonalGrainCheck(x, y, firstDir, Material.Blank) {
+		w.SetDiagonalGrain(x, y, firstDir, next)
 		return
 	}
 
-	if w.DiagonalMoveCheck(x, y, secondDir, Material.Blank) {
-		w.SetDiagonalPosition(x, y, secondDir, next)
+	if w.DiagonalGrainCheck(x, y, secondDir, Material.Blank) {
+		w.SetDiagonalGrain(x, y, secondDir, next)
 		return
 	}
 
 	// If no movement is possible, stay in place
-	w.SetRelativePosition(x, y, Hold, next)
+	w.SetNextGrain(x, y, Hold, next)
 }
 
 func (w *World) UpdateWater(x, y int, next []Material.Grain) {
-	if w.BottomScreenCheck(y) {
-		w.SetRelativePosition(x, y, Hold, next) // If at the bottom edge, stay in place
+	if w.IsBottomBound(y) {
+		w.SetNextGrain(x, y, Hold, next) // If at the bottom edge, stay in place
 		return
 	}
 
-	if w.CheckRelativePosition(x, y, Below, Material.Blank) {
-		w.SetRelativePosition(x, y, Below, next) // If the cell below is empty, move down
+	if w.IsGrain(x, y, Below, Material.Blank) {
+		w.SetNextGrain(x, y, Below, next) // If the cell below is empty, move down
 		return
 	}
 
@@ -116,27 +116,27 @@ func (w *World) UpdateWater(x, y int, next []Material.Grain) {
 	secondDir := firstDir * -1
 
 	// If the cell below and to the left/right is empty, move diagonally
-	if w.DiagonalMoveCheck(x, y, firstDir, Material.Blank) {
-		w.SetDiagonalPosition(x, y, firstDir, next)
+	if w.DiagonalGrainCheck(x, y, firstDir, Material.Blank) {
+		w.SetDiagonalGrain(x, y, firstDir, next)
 		return
 	}
 
-	if w.DiagonalMoveCheck(x, y, secondDir, Material.Blank) {
-		w.SetDiagonalPosition(x, y, secondDir, next)
+	if w.DiagonalGrainCheck(x, y, secondDir, Material.Blank) {
+		w.SetDiagonalGrain(x, y, secondDir, next)
 		return
 	}
 
-	if w.LateralMoveCheck(x, y, firstDir, Material.Blank, next) {
-		w.SetLateralPosition(x, y, firstDir, next)
+	if w.LateralGrainCheck(x, y, firstDir, Material.Blank, next) {
+		w.SetLateralGrain(x, y, firstDir, next)
 		return
 	}
-	if w.LateralMoveCheck(x, y, firstDir, Material.Blank, next) {
-		w.SetLateralPosition(x, y, firstDir, next)
+	if w.LateralGrainCheck(x, y, firstDir, Material.Blank, next) {
+		w.SetLateralGrain(x, y, firstDir, next)
 		return
 	}
 
 	// If no movement is possible, stay in place
-	w.SetRelativePosition(x, y, Hold, next)
+	w.SetNextGrain(x, y, Hold, next)
 }
 
 type Direction int
@@ -184,67 +184,63 @@ func randomDirection() int {
 	return randomOffset
 }
 
-func (w *World) LateralMoveCheck(x, y, offset int, checkFor Material.Grain, next []Material.Grain) bool {
-	if !w.HorizontalScreenCheck(x, offset) {
+func (w *World) LateralGrainCheck(x, y, offset int, checkFor Material.Grain, next []Material.Grain) bool {
+	if !w.InLateralBounds(x, offset) {
 		return false
 	}
 	if offset == 1 {
-		return w.CheckRelativePosition(x, y, Right, checkFor) && w.CheckRelativePositionNextFrame(x, y, Right, checkFor, next)
+		return w.IsGrain(x, y, Right, checkFor) && w.IsNextGrain(x, y, Right, checkFor, next)
 	}
-	return w.CheckRelativePosition(x, y, Left, checkFor) && w.CheckRelativePositionNextFrame(x, y, Left, checkFor, next)
+	return w.IsGrain(x, y, Left, checkFor) && w.IsNextGrain(x, y, Left, checkFor, next)
 }
 
-func (w *World) SetLateralPosition(x, y, offset int, next []Material.Grain) {
+func (w *World) SetLateralGrain(x, y, offset int, next []Material.Grain) {
 	if offset == 1 {
-		w.SetRelativePosition(x, y, Right, next)
+		w.SetNextGrain(x, y, Right, next)
 	} else {
-		w.SetRelativePosition(x, y, Left, next)
+		w.SetNextGrain(x, y, Left, next)
 	}
 }
 
-func (w *World) DiagonalMoveCheck(x, y, offset int, checkFor Material.Grain) bool {
-	if !w.HorizontalScreenCheck(x, offset) {
+func (w *World) DiagonalGrainCheck(x, y, offset int, checkFor Material.Grain) bool {
+	if !w.InLateralBounds(x, offset) {
 		return false
 	}
 	if offset == 1 {
-		return w.CheckRelativePosition(x, y, BelowRight, checkFor)
+		return w.IsGrain(x, y, BelowRight, checkFor)
 	}
-	return w.CheckRelativePosition(x, y, BelowLeft, checkFor)
+	return w.IsGrain(x, y, BelowLeft, checkFor)
 }
 
-func (w *World) SetDiagonalPosition(x, y, offset int, next []Material.Grain) {
+func (w *World) SetDiagonalGrain(x, y, offset int, next []Material.Grain) {
 	if offset == 1 {
-		w.SetRelativePosition(x, y, BelowRight, next)
+		w.SetNextGrain(x, y, BelowRight, next)
 	} else {
-		w.SetRelativePosition(x, y, BelowLeft, next)
+		w.SetNextGrain(x, y, BelowLeft, next)
 	}
 }
 
-func (w *World) CheckRelativePositionNextFrame(x, y int, dir Direction, checkFor Material.Grain, next []Material.Grain) bool {
+func (w *World) IsNextGrain(x, y int, dir Direction, checkFor Material.Grain, next []Material.Grain) bool {
 	dx, dy := dir.Delta()
 	return next[(y+dy)*w.width+x+dx] == checkFor
 }
 
-func (w *World) CheckRelativePosition(x, y int, dir Direction, checkFor Material.Grain) bool {
+func (w *World) IsGrain(x, y int, dir Direction, checkFor Material.Grain) bool {
 	dx, dy := dir.Delta()
 	return w.area[(y+dy)*w.width+x+dx] == checkFor
 }
 
-func (w *World) SetRelativePosition(x, y int, dir Direction, next []Material.Grain) {
+func (w *World) SetNextGrain(x, y int, dir Direction, next []Material.Grain) {
 	dx, dy := dir.Delta()
 	next[(y+dy)*w.width+x+dx] = w.area[y*w.width+x]
 }
 
-func (w *World) HorizontalScreenCheck(x, dir int) bool {
+func (w *World) InLateralBounds(x, dir int) bool {
 	return x-dir > 0 && x+dir < w.width
 }
 
-func (w *World) BottomScreenCheck(y int) bool {
+func (w *World) IsBottomBound(y int) bool {
 	return y+1 >= w.height
-}
-
-func (w *World) EmptyBelowCheck(x, y int) bool {
-	return w.area[(y+1)*w.width+x] == Material.Blank
 }
 
 func (w *World) Draw(pixels []byte) {
