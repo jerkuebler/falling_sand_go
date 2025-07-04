@@ -14,6 +14,43 @@ type Point struct {
 	y int
 }
 
+type Direction int
+
+const (
+	Above Direction = iota
+	AboveLeft
+	AboveRight
+	Below
+	BelowLeft
+	BelowRight
+	Left
+	Right
+	Hold
+)
+
+func (d Direction) Delta() (dx, dy int) {
+	switch d {
+	case Above:
+		return 0, -1
+	case AboveLeft:
+		return -1, -1
+	case AboveRight:
+		return 1, -1
+	case Below:
+		return 0, 1
+	case BelowLeft:
+		return -1, 1
+	case BelowRight:
+		return 1, 1
+	case Left:
+		return -1, 0
+	case Right:
+		return 1, 0
+	default:
+		return 0, 0
+	}
+}
+
 type World struct {
 	area      []Material.Grain
 	next      []Material.Grain
@@ -57,222 +94,19 @@ func (w *World) Update() {
 		w.next[mouse_pos.y*w.width+mouse_pos.x] = w.heldGrain
 	}
 
-	w.HandlePressedKeys()
+	w.handlePressedKeys()
 
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
 			switch w.area[y*w.width+x] {
 			case 1:
-				w.UpdateSand(x, y)
+				w.updateSand(x, y)
 			case 2:
-				w.UpdateWater(x, y)
+				w.updateWater(x, y)
 			}
 		}
 	}
 	w.area = w.next
-}
-
-func (w *World) HandlePressedKeys() {
-	if ebiten.IsKeyPressed(ebiten.Key1) {
-		w.heldGrain = Material.Sand
-	}
-
-	if ebiten.IsKeyPressed(ebiten.Key2) {
-		w.heldGrain = Material.Water
-	}
-}
-
-func (w *World) UpdateSand(x, y int) {
-
-	if w.IsBottomBound(y) {
-		w.SetNextGrain(x, y, Hold) // If at the bottom edge, stay in place
-		return
-	}
-
-	if w.DirectionalGrainCheck(x, y, Below, Material.Blank) {
-		w.SetNextGrain(x, y, Below) // If the cell below is empty, move down
-		return
-	}
-
-	if w.IsGrain(x, y, Below, Material.Water) {
-		w.SetNextGrain(x, y, Below)
-		return
-	}
-
-	firstDir := utils.RandomDirection()
-	secondDir := firstDir * -1
-
-	// If the cell below and to the left/right is empty, move diagonally
-	if w.DiagonalGrainCheck(x, y, firstDir, Material.Blank) {
-		w.SetDiagonalGrain(x, y, firstDir)
-		return
-	}
-
-	if w.DiagonalGrainCheck(x, y, secondDir, Material.Blank) {
-		w.SetDiagonalGrain(x, y, secondDir)
-		return
-	}
-
-	// If no movement is possible, stay in place
-	w.SetNextGrain(x, y, Hold)
-}
-
-func (w *World) UpdateWater(x, y int) {
-	if w.IsBottomBound(y) {
-		w.SetNextGrain(x, y, Hold) // If at the bottom edge, stay in place
-		return
-	}
-
-	if w.DirectionalGrainCheck(x, y, Below, Material.Blank) {
-		w.SetNextGrain(x, y, Below) // If the cell below is empty, move down
-		return
-	}
-
-	firstDir := utils.RandomDirection()
-	secondDir := firstDir * -1
-
-	// If the cell below and to the left/right is empty, move diagonally
-	if w.DiagonalGrainCheck(x, y, firstDir, Material.Blank) {
-		w.SetDiagonalGrain(x, y, firstDir)
-		return
-	}
-
-	if w.DiagonalGrainCheck(x, y, secondDir, Material.Blank) {
-		w.SetDiagonalGrain(x, y, secondDir)
-		return
-	}
-
-	if w.LateralGrainCheck(x, y, firstDir, Material.Blank) {
-		w.SetLateralGrain(x, y, firstDir)
-		return
-	}
-	if w.LateralGrainCheck(x, y, firstDir, Material.Blank) {
-		w.SetLateralGrain(x, y, firstDir)
-		return
-	}
-
-	// If no movement is possible and haven't already been replaced, stay in place
-	if w.IsNextGrain(x, y, Hold, Material.Blank) {
-		w.SetNextGrain(x, y, Hold)
-	} else {
-		dy := w.NextNearestBlankAbove(x, y)
-		w.SetNextGrainTo(x, dy, Material.Water)
-	}
-
-}
-
-type Direction int
-
-const (
-	Above Direction = iota
-	AboveLeft
-	AboveRight
-	Below
-	BelowLeft
-	BelowRight
-	Left
-	Right
-	Hold
-)
-
-func (d Direction) Delta() (dx, dy int) {
-	switch d {
-	case Above:
-		return 0, -1
-	case AboveLeft:
-		return -1, -1
-	case AboveRight:
-		return 1, -1
-	case Below:
-		return 0, 1
-	case BelowLeft:
-		return -1, 1
-	case BelowRight:
-		return 1, 1
-	case Left:
-		return -1, 0
-	case Right:
-		return 1, 0
-	default:
-		return 0, 0
-	}
-}
-
-func (w *World) DirectionalGrainCheck(x, y int, dir Direction, checkFor Material.Grain) bool {
-	return w.IsGrain(x, y, dir, checkFor) && w.IsNextGrain(x, y, dir, checkFor)
-}
-
-func (w *World) LateralGrainCheck(x, y, offset int, checkFor Material.Grain) bool {
-	if !w.InLateralBounds(x, offset) {
-		return false
-	}
-	if offset == 1 {
-		return w.DirectionalGrainCheck(x, y, Right, checkFor)
-	}
-	return w.DirectionalGrainCheck(x, y, Left, checkFor)
-}
-
-func (w *World) SetLateralGrain(x, y, offset int) {
-	if offset == 1 {
-		w.SetNextGrain(x, y, Right)
-	} else {
-		w.SetNextGrain(x, y, Left)
-	}
-}
-
-func (w *World) DiagonalGrainCheck(x, y, offset int, checkFor Material.Grain) bool {
-	if !w.InLateralBounds(x, offset) {
-		return false
-	}
-	if offset == 1 {
-		return w.DirectionalGrainCheck(x, y, BelowRight, checkFor)
-	}
-	return w.DirectionalGrainCheck(x, y, BelowLeft, checkFor)
-}
-
-func (w *World) SetDiagonalGrain(x, y, offset int) {
-	if offset == 1 {
-		w.SetNextGrain(x, y, BelowRight)
-	} else {
-		w.SetNextGrain(x, y, BelowLeft)
-	}
-}
-
-func (w *World) NextNearestBlankAbove(x, y int) int {
-	dy := y
-	for !w.IsNextGrain(x, dy, Hold, Material.Blank) {
-		dy -= 1
-	}
-	return dy
-}
-
-func (w *World) IsValidMove(x, y int, dir Direction, checkFor Material.Grain) {}
-
-func (w *World) IsNextGrain(x, y int, dir Direction, checkFor Material.Grain) bool {
-	dx, dy := dir.Delta()
-	return w.next[(y+dy)*w.width+x+dx] == checkFor
-}
-
-func (w *World) IsGrain(x, y int, dir Direction, checkFor Material.Grain) bool {
-	dx, dy := dir.Delta()
-	return w.area[(y+dy)*w.width+x+dx] == checkFor
-}
-
-func (w *World) SetNextGrainTo(x, y int, setTo Material.Grain) {
-	w.next[(y)*w.width+x] = setTo
-}
-
-func (w *World) SetNextGrain(x, y int, dir Direction) {
-	dx, dy := dir.Delta()
-	w.next[(y+dy)*w.width+x+dx] = w.area[y*w.width+x]
-}
-
-func (w *World) InLateralBounds(x, dir int) bool {
-	return x-dir > 0 && x+dir < w.width
-}
-
-func (w *World) IsBottomBound(y int) bool {
-	return y+1 >= w.height
 }
 
 func (w *World) Draw(pixels []byte) {
@@ -289,4 +123,171 @@ func (w *World) Draw(pixels []byte) {
 			}
 		}
 	}
+}
+
+func (w *World) handlePressedKeys() {
+	if ebiten.IsKeyPressed(ebiten.Key1) {
+		w.heldGrain = Material.Sand
+	}
+
+	if ebiten.IsKeyPressed(ebiten.Key2) {
+		w.heldGrain = Material.Water
+	}
+}
+
+func (w *World) updateSand(x, y int) {
+
+	if w.isBottomBound(y) {
+		w.setNextGrain(x, y, Hold) // If at the bottom edge, stay in place
+		return
+	}
+
+	if w.directionalGrainCheck(x, y, Below, Material.Blank) {
+		w.setNextGrain(x, y, Below) // If the cell below is empty, move down
+		return
+	}
+
+	if w.isGrain(x, y, Below, Material.Water) {
+		w.setNextGrain(x, y, Below)
+		return
+	}
+
+	firstDir := utils.RandomDirection()
+	secondDir := firstDir * -1
+
+	// If the cell below and to the left/right is empty, move diagonally
+	if w.diagonalGrainCheck(x, y, firstDir, Material.Blank) {
+		w.setDiagonalGrain(x, y, firstDir)
+		return
+	}
+
+	if w.diagonalGrainCheck(x, y, secondDir, Material.Blank) {
+		w.setDiagonalGrain(x, y, secondDir)
+		return
+	}
+
+	// If no movement is possible, stay in place
+	w.setNextGrain(x, y, Hold)
+}
+
+func (w *World) updateWater(x, y int) {
+	if w.isBottomBound(y) {
+		w.setNextGrain(x, y, Hold) // If at the bottom edge, stay in place
+		return
+	}
+
+	if w.directionalGrainCheck(x, y, Below, Material.Blank) {
+		w.setNextGrain(x, y, Below) // If the cell below is empty, move down
+		return
+	}
+
+	firstDir := utils.RandomDirection()
+	secondDir := firstDir * -1
+
+	// If the cell below and to the left/right is empty, move diagonally
+	if w.diagonalGrainCheck(x, y, firstDir, Material.Blank) {
+		w.setDiagonalGrain(x, y, firstDir)
+		return
+	}
+
+	if w.diagonalGrainCheck(x, y, secondDir, Material.Blank) {
+		w.setDiagonalGrain(x, y, secondDir)
+		return
+	}
+
+	if w.lateralGrainCheck(x, y, firstDir, Material.Blank) {
+		w.setLateralGrain(x, y, firstDir)
+		return
+	}
+	if w.lateralGrainCheck(x, y, firstDir, Material.Blank) {
+		w.setLateralGrain(x, y, firstDir)
+		return
+	}
+
+	// If no movement is possible and haven't already been replaced, stay in place
+	if w.isNextGrain(x, y, Hold, Material.Blank) {
+		w.setNextGrain(x, y, Hold)
+	} else {
+		dy := w.nextNearestBlankAbove(x, y)
+		w.setNextGrainTo(x, dy, Material.Water)
+	}
+
+}
+
+func (w *World) directionalGrainCheck(x, y int, dir Direction, checkFor Material.Grain) bool {
+	return w.isGrain(x, y, dir, checkFor) && w.isNextGrain(x, y, dir, checkFor)
+}
+
+func (w *World) lateralGrainCheck(x, y, offset int, checkFor Material.Grain) bool {
+	if !w.inLateralBounds(x, offset) {
+		return false
+	}
+	if offset == 1 {
+		return w.directionalGrainCheck(x, y, Right, checkFor)
+	}
+	return w.directionalGrainCheck(x, y, Left, checkFor)
+}
+
+func (w *World) setLateralGrain(x, y, offset int) {
+	if offset == 1 {
+		w.setNextGrain(x, y, Right)
+	} else {
+		w.setNextGrain(x, y, Left)
+	}
+}
+
+func (w *World) diagonalGrainCheck(x, y, offset int, checkFor Material.Grain) bool {
+	if !w.inLateralBounds(x, offset) {
+		return false
+	}
+	if offset == 1 {
+		return w.directionalGrainCheck(x, y, BelowRight, checkFor)
+	}
+	return w.directionalGrainCheck(x, y, BelowLeft, checkFor)
+}
+
+func (w *World) setDiagonalGrain(x, y, offset int) {
+	if offset == 1 {
+		w.setNextGrain(x, y, BelowRight)
+	} else {
+		w.setNextGrain(x, y, BelowLeft)
+	}
+}
+
+func (w *World) nextNearestBlankAbove(x, y int) int {
+	dy := y
+	for !w.isNextGrain(x, dy, Hold, Material.Blank) {
+		dy -= 1
+	}
+	return dy
+}
+
+// TODO: Fold other checking functions into one
+// func (w *World) isValidMove(x, y int, dir Direction, checkFor Material.Grain) {}
+
+func (w *World) isNextGrain(x, y int, dir Direction, checkFor Material.Grain) bool {
+	dx, dy := dir.Delta()
+	return w.next[(y+dy)*w.width+x+dx] == checkFor
+}
+
+func (w *World) isGrain(x, y int, dir Direction, checkFor Material.Grain) bool {
+	dx, dy := dir.Delta()
+	return w.area[(y+dy)*w.width+x+dx] == checkFor
+}
+
+func (w *World) setNextGrainTo(x, y int, setTo Material.Grain) {
+	w.next[(y)*w.width+x] = setTo
+}
+
+func (w *World) setNextGrain(x, y int, dir Direction) {
+	dx, dy := dir.Delta()
+	w.next[(y+dy)*w.width+x+dx] = w.area[y*w.width+x]
+}
+
+func (w *World) inLateralBounds(x, dir int) bool {
+	return x-dir > 0 && x+dir < w.width
+}
+
+func (w *World) isBottomBound(y int) bool {
+	return y+1 >= w.height
 }
