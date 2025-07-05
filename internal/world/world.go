@@ -102,6 +102,19 @@ var grainFuncs = map[Material.Grain][]setterFunctions{
 		(*World).trySetLateral,
 		(*World).defaultHold,
 	},
+	Material.Rock: {
+		(*World).holdAtBottom,
+		(*World).trySetBelow,
+		(*World).trySetDiagonal,
+		(*World).defaultHold,
+	},
+	Material.Lava: {
+		(*World).holdAtBottom,
+		(*World).trySetBelow,
+		(*World).trySetDiagonal,
+		(*World).trySetLateral,
+		(*World).defaultHold,
+	},
 }
 
 func (w *World) updateFuncs(x, y int) {
@@ -134,6 +147,14 @@ func (w *World) handleInput() {
 
 	if inpututil.IsKeyJustPressed(ebiten.Key2) {
 		w.heldGrain = Material.Water
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.Key3) {
+		w.heldGrain = Material.Rock
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.Key4) {
+		w.heldGrain = Material.Lava
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key5) {
@@ -191,7 +212,7 @@ func (w *World) directionalGrainCheck(x, y int, dir utils.Direction) bool {
 	selfMat := w.getCurrentGrain(x, y)
 	tgtMat := w.getCurrentGrain(x+dx, y+dy)
 	nextMat := w.getNextGrain(x+dx, y+dy)
-	return selfMat > tgtMat && nextMat == Material.Blank
+	return selfMat.GetDensity() > tgtMat.GetDensity() && nextMat == Material.Blank
 }
 
 func (w *World) trySetLateral(x, y int) bool {
