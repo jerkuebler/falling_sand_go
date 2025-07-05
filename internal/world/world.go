@@ -37,32 +37,6 @@ func (w *World) init() {
 	}
 }
 
-func (w *World) DebugUpdate() {
-	if ebiten.IsKeyPressed(ebiten.Key5) {
-		w.Update()
-		fmt.Printf("Blank: %d, Sand: %d, Water: %d\n", utils.CountValue(w.next, 0), utils.CountValue(w.next, 1), utils.CountValue(w.next, 2))
-	}
-}
-
-func (w *World) Update() {
-	// Update logic for the world can be added here
-	w.next = make([]Material.Grain, w.width*w.height)
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButton0) {
-		mouse_pos := utils.Point{X: 0, Y: 0}
-		mouse_pos.X, mouse_pos.Y = ebiten.CursorPosition()
-		w.next[mouse_pos.Y*w.width+mouse_pos.X] = w.heldGrain
-	}
-
-	w.handlePressedKeys()
-
-	for y := 0; y < w.height; y++ {
-		for x := 0; x < w.width; x++ {
-			w.updateFuncs(x, y)
-		}
-	}
-	w.area = w.next
-}
-
 func (w *World) Draw(pixels []byte) {
 	for i, v := range w.area {
 		if v != 0 {
@@ -79,14 +53,25 @@ func (w *World) Draw(pixels []byte) {
 	}
 }
 
-func (w *World) handlePressedKeys() {
-	if ebiten.IsKeyPressed(ebiten.Key1) {
-		w.heldGrain = Material.Sand
+func (w *World) DebugUpdate() {
+	if ebiten.IsKeyPressed(ebiten.Key5) {
+		w.Update()
+		fmt.Printf("Blank: %d, Sand: %d, Water: %d\n", utils.CountValue(w.next, 0), utils.CountValue(w.next, 1), utils.CountValue(w.next, 2))
 	}
+}
 
-	if ebiten.IsKeyPressed(ebiten.Key2) {
-		w.heldGrain = Material.Water
+func (w *World) Update() {
+	// Update logic for the world can be added here
+	w.next = make([]Material.Grain, w.width*w.height)
+
+	w.handleInput()
+
+	for y := 0; y < w.height; y++ {
+		for x := 0; x < w.width; x++ {
+			w.updateFuncs(x, y)
+		}
 	}
+	w.area = w.next
 }
 
 type setterFunctions func(*World, int, int) bool
@@ -116,7 +101,23 @@ func (w *World) updateFuncs(x, y int) {
 			return
 		}
 	}
-	panic("The material update function failed somehow. Good luck.")
+	panic(fmt.Sprintf("The material update function failed somehow during material# %d", selfMaterial))
+}
+
+func (w *World) handleInput() {
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButton0) {
+		mouse_pos := utils.Point{X: 0, Y: 0}
+		mouse_pos.X, mouse_pos.Y = ebiten.CursorPosition()
+		w.next[mouse_pos.Y*w.width+mouse_pos.X] = w.heldGrain
+	}
+
+	if ebiten.IsKeyPressed(ebiten.Key1) {
+		w.heldGrain = Material.Sand
+	}
+
+	if ebiten.IsKeyPressed(ebiten.Key2) {
+		w.heldGrain = Material.Water
+	}
 }
 
 func (w *World) holdOrRise(x, y int) {

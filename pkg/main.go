@@ -39,7 +39,8 @@ func main() {
 	ebiten.SetWindowSize(screenWidth*screenScale, screenHeight*screenScale)
 	ebiten.SetWindowTitle("Falling Sand")
 	g := &Game{
-		world: World.NewWorld(screenWidth, screenHeight),
+		world:  World.NewWorld(screenWidth, screenHeight),
+		pixels: make([]byte, screenWidth*screenHeight*4),
 	}
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
