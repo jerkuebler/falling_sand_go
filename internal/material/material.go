@@ -11,10 +11,11 @@ const (
 
 type Grain int
 
+// Use order in enum as relative density, reordering will break functions
 const (
 	Blank Grain = iota
-	Sand
 	Water
+	Sand
 )
 
 var grainPhases = map[Grain]Phase{

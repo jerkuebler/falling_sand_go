@@ -82,5 +82,5 @@ func RandomLateral() (Direction, Direction) {
 		return Left, Right
 	}
 
-	return Left, Right
+	return Right, Left
 }

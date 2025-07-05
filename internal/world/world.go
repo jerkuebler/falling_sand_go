@@ -5,6 +5,7 @@ import (
 	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	Material "github.com/jerkuebler/falling_sand_go/internal/material"
 	utils "github.com/jerkuebler/falling_sand_go/internal/utils"
 )
@@ -15,13 +16,21 @@ type World struct {
 	width     int
 	height    int
 	heldGrain Material.Grain
+	paused    bool
 }
 
 func NewWorld(width, height int) *World {
 	area := make([]Material.Grain, width*height)
 	next := make([]Material.Grain, width*height)
 	heldGrain := Material.Sand // Default grain type
-	w := &World{area: area, next: next, width: width, height: height, heldGrain: heldGrain}
+	w := &World{
+		area:      area,
+		next:      next,
+		width:     width,
+		height:    height,
+		heldGrain: heldGrain,
+		paused:    false,
+	}
 	w.init()
 	return w
 }
@@ -30,9 +39,9 @@ func (w *World) init() {
 	bottomHalf := w.width * w.height / 2 // Only apply to bottom half to speed up init
 	for i := range bottomHalf {
 		if rand.Intn(30) == 0 {
-			w.area[bottomHalf+i] = 1 // Randomly set some points to true
+			w.area[bottomHalf+i] = Material.Sand // Randomly set some points to sand
 		} else {
-			w.area[bottomHalf+i] = 0
+			w.area[bottomHalf+i] = Material.Blank
 		}
 	}
 }
@@ -53,18 +62,21 @@ func (w *World) Draw(pixels []byte) {
 	}
 }
 
-func (w *World) DebugUpdate() {
-	if ebiten.IsKeyPressed(ebiten.Key5) {
-		w.Update()
-		fmt.Printf("Blank: %d, Sand: %d, Water: %d\n", utils.CountValue(w.next, 0), utils.CountValue(w.next, 1), utils.CountValue(w.next, 2))
+func (w *World) Update() {
+	if !w.paused {
+		w.UpdateWorld()
+		fmt.Printf("Blank: %d, Sand: %d, Water: %d\n",
+			utils.CountValue(w.next, Material.Blank),
+			utils.CountValue(w.next, Material.Sand),
+			utils.CountValue(w.next, Material.Water),
+		)
 	}
+	w.handleInput()
 }
 
-func (w *World) Update() {
+func (w *World) UpdateWorld() {
 	// Update logic for the world can be added here
 	w.next = make([]Material.Grain, w.width*w.height)
-
-	w.handleInput()
 
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
@@ -80,7 +92,6 @@ var grainFuncs = map[Material.Grain][]setterFunctions{
 	Material.Sand: {
 		(*World).holdAtBottom,
 		(*World).trySetBelow,
-		(*World).trySetBelowWater,
 		(*World).trySetDiagonal,
 		(*World).defaultHold,
 	},
@@ -94,13 +105,19 @@ var grainFuncs = map[Material.Grain][]setterFunctions{
 }
 
 func (w *World) updateFuncs(x, y int) {
+
 	selfMaterial := w.getCurrentGrain(x, y)
+
+	if selfMaterial == 0 {
+		return
+	}
 
 	for _, setFunc := range grainFuncs[selfMaterial] {
 		if setFunc(w, x, y) {
 			return
 		}
 	}
+
 	panic(fmt.Sprintf("The material update function failed somehow during material# %d", selfMaterial))
 }
 
@@ -111,12 +128,16 @@ func (w *World) handleInput() {
 		w.next[mouse_pos.Y*w.width+mouse_pos.X] = w.heldGrain
 	}
 
-	if ebiten.IsKeyPressed(ebiten.Key1) {
+	if inpututil.IsKeyJustPressed(ebiten.Key1) {
 		w.heldGrain = Material.Sand
 	}
 
-	if ebiten.IsKeyPressed(ebiten.Key2) {
+	if inpututil.IsKeyJustPressed(ebiten.Key2) {
 		w.heldGrain = Material.Water
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.Key5) {
+		w.paused = !w.paused
 	}
 }
 
@@ -124,7 +145,7 @@ func (w *World) holdOrRise(x, y int) {
 	selfMaterial := w.getCurrentGrain(x, y)
 	// If no movement is possible and haven't already been replaced, stay in place
 	if w.isNextGrain(x, y, utils.Hold, Material.Blank) {
-		w.setNextGrain(x, y, utils.Hold)
+		w.setNextGrainToSelf(x, y, utils.Hold)
 	} else {
 		// For a liquid, find the first position above the invalid home position
 		dy := w.nextNearestBlankAbove(x, y)
@@ -138,7 +159,7 @@ func (w *World) defaultHold(x, y int) bool {
 		w.holdOrRise(x, y)
 		return true
 	}
-	w.setNextGrain(x, y, utils.Hold) // If at the bottom edge, stay in place
+	w.setNextGrainToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
 	return true
 }
 
@@ -149,46 +170,40 @@ func (w *World) holdAtBottom(x, y int) bool {
 		return true
 	}
 	if w.isBottomBound(y) {
-		w.setNextGrain(x, y, utils.Hold) // If at the bottom edge, stay in place
-		return true
-	}
-	return false
-}
-
-func (w *World) trySetBelowWater(x, y int) bool {
-	if w.isGrain(x, y, utils.Below, Material.Water) {
-		w.setNextGrain(x, y, utils.Below)
+		w.setNextGrainToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
 		return true
 	}
 	return false
 }
 
 func (w *World) trySetBelow(x, y int) bool {
-	return w.trySetDirectional(x, y, utils.Below, Material.Blank)
-}
 
-func (w *World) trySetDirectional(x, y int, dir utils.Direction, checkFor Material.Grain) bool {
-	if w.directionalGrainCheck(x, y, dir, checkFor) {
-		w.setNextGrain(x, y, dir)
+	if w.directionalGrainCheck(x, y, utils.Below) {
+		w.setNextGrainToSelf(x, y, utils.Below)
 		return true
 	}
+
 	return false
 }
 
-func (w *World) directionalGrainCheck(x, y int, dir utils.Direction, checkFor Material.Grain) bool {
-	return w.isGrain(x, y, dir, checkFor) && w.isNextGrain(x, y, dir, checkFor)
+func (w *World) directionalGrainCheck(x, y int, dir utils.Direction) bool {
+	dx, dy := dir.Delta()
+	selfMat := w.getCurrentGrain(x, y)
+	tgtMat := w.getCurrentGrain(x+dx, y+dy)
+	nextMat := w.getNextGrain(x+dx, y+dy)
+	return selfMat > tgtMat && nextMat == Material.Blank
 }
 
 func (w *World) trySetLateral(x, y int) bool {
 	firstDir, secondDir := utils.RandomLateral()
 	dx, _ := firstDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir, Material.Blank) {
-		w.setNextGrain(x, y, firstDir)
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir) {
+		w.setNextGrainToSelf(x, y, firstDir)
 		return true
 	}
 	dx, _ = secondDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir, Material.Blank) {
-		w.setNextGrain(x, y, secondDir)
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir) {
+		w.setNextGrainToSelf(x, y, secondDir)
 		return true
 	}
 	return false
@@ -197,13 +212,13 @@ func (w *World) trySetLateral(x, y int) bool {
 func (w *World) trySetDiagonal(x, y int) bool {
 	firstDir, secondDir := utils.RandomDownDiagonal()
 	dx, _ := firstDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir, Material.Blank) {
-		w.setNextGrain(x, y, firstDir)
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir) {
+		w.setNextGrainToSelf(x, y, firstDir)
 		return true
 	}
 	dx, _ = secondDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir, Material.Blank) {
-		w.setNextGrain(x, y, secondDir)
+	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir) {
+		w.setNextGrainToSelf(x, y, secondDir)
 		return true
 	}
 	return false
@@ -231,9 +246,13 @@ func (w *World) setNextGrainTo(x, y int, setTo Material.Grain) {
 	w.next[(y)*w.width+x] = setTo
 }
 
-func (w *World) setNextGrain(x, y int, dir utils.Direction) {
+func (w *World) setNextGrainToSelf(x, y int, dir utils.Direction) {
 	dx, dy := dir.Delta()
 	w.next[(y+dy)*w.width+x+dx] = w.area[y*w.width+x]
+}
+
+func (w *World) getNextGrain(x, y int) Material.Grain {
+	return w.next[y*w.width+x]
 }
 
 func (w *World) inLateralBounds(x, dir int) bool {
