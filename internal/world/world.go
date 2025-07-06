@@ -10,28 +10,28 @@ import (
 )
 
 type World struct {
-	area      []Material.Grain
-	next      []Material.Grain
-	zero      []Material.Grain
-	width     int
-	height    int
-	heldGrain Material.Grain
-	paused    bool
+	area     []Material.Node
+	next     []Material.Node
+	zero     []Material.Node
+	width    int
+	height   int
+	heldNode Material.Node
+	paused   bool
 }
 
 func NewWorld(width, height int) *World {
-	area := make([]Material.Grain, width*height)
-	next := make([]Material.Grain, width*height)
-	zero := make([]Material.Grain, width*height)
-	heldGrain := Material.Sand // Default grain type
+	area := make([]Material.Node, width*height)
+	next := make([]Material.Node, width*height)
+	zero := make([]Material.Node, width*height)
+	heldNode := Material.Sand // Default Node type
 	w := &World{
-		area:      area,
-		next:      next,
-		zero:      zero,
-		width:     width,
-		height:    height,
-		heldGrain: heldGrain,
-		paused:    false,
+		area:     area,
+		next:     next,
+		zero:     zero,
+		width:    width,
+		height:   height,
+		heldNode: heldNode,
+		paused:   false,
 	}
 	w.init()
 	return w
@@ -51,7 +51,7 @@ func (w *World) init() {
 func (w *World) Draw(pixels []byte) {
 	for i, v := range w.area {
 		if v != 0 {
-			color := Material.Grain(v).GetColor()
+			color := Material.Node(v).GetColor()
 			for j := range 4 {
 				pixels[i*4+j] = color[j]
 			}
@@ -93,7 +93,7 @@ func (w *World) UpdateWorld() {
 
 type setterFunctions func(*World, int, int) bool
 
-var grainFuncs = map[Material.Grain][]setterFunctions{
+var nodeFuncs = map[Material.Node][]setterFunctions{
 	Material.Sand: {
 		(*World).holdAtBottom,
 		(*World).trySetBelow,
@@ -133,13 +133,13 @@ func (w *World) updateFuncs(x, y int) {
 		return
 	}
 
-	selfMaterial := w.getCurrentGrain(x, y)
+	selfMaterial := w.getCurrentNode(x, y)
 
 	if selfMaterial == Material.Blank {
 		return
 	}
 
-	for _, setFunc := range grainFuncs[selfMaterial] {
+	for _, setFunc := range nodeFuncs[selfMaterial] {
 		if setFunc(w, x, y) {
 			return
 		}
@@ -152,23 +152,23 @@ func (w *World) handleInput() {
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButton0) {
 		mouse_pos := utils.Point{X: 0, Y: 0}
 		mouse_pos.X, mouse_pos.Y = ebiten.CursorPosition()
-		w.next[mouse_pos.Y*w.width+mouse_pos.X] = w.heldGrain
+		w.next[mouse_pos.Y*w.width+mouse_pos.X] = w.heldNode
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
-		w.heldGrain = Material.Sand
+		w.heldNode = Material.Sand
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key2) {
-		w.heldGrain = Material.Water
+		w.heldNode = Material.Water
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key3) {
-		w.heldGrain = Material.Rock
+		w.heldNode = Material.Rock
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key4) {
-		w.heldGrain = Material.Lava
+		w.heldNode = Material.Lava
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key5) {
@@ -177,14 +177,14 @@ func (w *World) handleInput() {
 }
 
 func (w *World) holdOrRise(x, y int) {
-	selfMaterial := w.getCurrentGrain(x, y)
+	selfMaterial := w.getCurrentNode(x, y)
 	// If no movement is possible and haven't already been replaced, stay in place
-	if w.getNextGrain(x, y) == Material.Blank {
-		w.setNextGrainToSelf(x, y, utils.Hold)
+	if w.getNextNode(x, y) == Material.Blank {
+		w.setNextNodeToSelf(x, y, utils.Hold)
 	} else {
 		// For a liquid, find the first position above the invalid home position
 		dy := w.nextNearestBlankAbove(x, y)
-		w.setNextGrainTo(x, dy, selfMaterial)
+		w.setNextNodeTo(x, dy, selfMaterial)
 	}
 }
 
@@ -198,30 +198,30 @@ func (w *World) randomMove(x, y int) bool {
 			return false
 		}
 		// fmt.Printf("RMove x: %d, y: %d, dir: %d\n", x, y, randomDir)
-		return w.directionalGrainCheck(x, y, randomDir)
+		return w.directionalNodeCheck(x, y, randomDir)
 	}
 	return false
 
 }
 
 func (w *World) defaultHold(x, y int) bool {
-	selfPhase := w.getCurrentGrain(x, y).GetPhase()
+	selfPhase := w.getCurrentNode(x, y).GetPhase()
 	if selfPhase != Material.Solid {
 		w.holdOrRise(x, y)
 		return true
 	}
-	w.setNextGrainToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
+	w.setNextNodeToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
 	return true
 }
 
 func (w *World) holdAtBottom(x, y int) bool {
-	selfPhase := w.getCurrentGrain(x, y).GetPhase()
+	selfPhase := w.getCurrentNode(x, y).GetPhase()
 	if !w.inBottomBound(y+1) && selfPhase != Material.Solid {
 		w.holdOrRise(x, y)
 		return true
 	}
 	if !w.inBottomBound(y + 1) {
-		w.setNextGrainToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
+		w.setNextNodeToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
 		return true
 	}
 	return false
@@ -229,40 +229,40 @@ func (w *World) holdAtBottom(x, y int) bool {
 
 func (w *World) trySetBelow(x, y int) bool {
 
-	if w.directionalGrainCheck(x, y, utils.Below) {
-		w.setNextGrainToSelf(x, y, utils.Below)
+	if w.directionalNodeCheck(x, y, utils.Below) {
+		w.setNextNodeToSelf(x, y, utils.Below)
 		return true
 	}
 
 	return false
 }
 
-func (w *World) directionalGrainCheck(x, y int, dir utils.Direction) bool {
+func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
 	dx, dy := dir.Delta()
 
 	if !w.inLateralBounds(x, dx) {
 		return false
 	}
 
-	nextMat := w.getNextGrain(x+dx, y+dy)
+	nextMat := w.getNextNode(x+dx, y+dy)
 
 	if nextMat != Material.Blank {
 		return false
 	}
 
-	selfMat := w.getCurrentGrain(x, y)
-	tgtMat := w.getCurrentGrain(x+dx, y+dy)
+	selfMat := w.getCurrentNode(x, y)
+	tgtMat := w.getCurrentNode(x+dx, y+dy)
 
 	// TODO: Figure out how to prevent duplications occurring during interactions.
 	// Current best idea is to only allow when moving down, and to make change occur on current frame, which feels off.
-	if result, ok := Material.MaterialInteractions[[2]Material.Grain{selfMat, tgtMat}]; ok {
-		w.setNextGrainTo(x, y, result[0])
-		w.setNextGrainTo(x+dx, y+dy, result[1])
+	if result, ok := Material.MaterialInteractions[[2]Material.Node{selfMat, tgtMat}]; ok {
+		w.setNextNodeTo(x, y, result[0])
+		w.setNextNodeTo(x+dx, y+dy, result[1])
 		return true
 	}
 
 	if selfMat.GetDensity() > tgtMat.GetDensity() {
-		w.setNextGrainToSelf(x, y, dir)
+		w.setNextNodeToSelf(x, y, dir)
 		return true
 	}
 	return false
@@ -270,10 +270,10 @@ func (w *World) directionalGrainCheck(x, y int, dir utils.Direction) bool {
 
 func (w *World) trySetLateral(x, y int) bool {
 	firstDir, secondDir := utils.RandomLateral()
-	if w.directionalGrainCheck(x, y, firstDir) {
+	if w.directionalNodeCheck(x, y, firstDir) {
 		return true
 	}
-	if w.directionalGrainCheck(x, y, secondDir) {
+	if w.directionalNodeCheck(x, y, secondDir) {
 		return true
 	}
 	return false
@@ -281,10 +281,10 @@ func (w *World) trySetLateral(x, y int) bool {
 
 func (w *World) trySetDiagonal(x, y int) bool {
 	firstDir, secondDir := utils.RandomDownDiagonal()
-	if w.directionalGrainCheck(x, y, firstDir) {
+	if w.directionalNodeCheck(x, y, firstDir) {
 		return true
 	}
-	if w.directionalGrainCheck(x, y, secondDir) {
+	if w.directionalNodeCheck(x, y, secondDir) {
 		return true
 	}
 	return false
@@ -292,22 +292,22 @@ func (w *World) trySetDiagonal(x, y int) bool {
 
 func (w *World) nextNearestBlankAbove(x, y int) int {
 	dy := y
-	for !(w.getNextGrain(x, dy) == Material.Blank) && dy != 0 {
+	for !(w.getNextNode(x, dy) == Material.Blank) && dy != 0 {
 		dy -= 1
 	}
 	return dy
 }
 
-func (w *World) setNextGrainTo(x, y int, setTo Material.Grain) {
+func (w *World) setNextNodeTo(x, y int, setTo Material.Node) {
 	w.next[(y)*w.width+x] = setTo
 }
 
-func (w *World) setNextGrainToSelf(x, y int, dir utils.Direction) {
+func (w *World) setNextNodeToSelf(x, y int, dir utils.Direction) {
 	dx, dy := dir.Delta()
 	w.next[(y+dy)*w.width+x+dx] = w.area[y*w.width+x]
 }
 
-func (w *World) getNextGrain(x, y int) Material.Grain {
+func (w *World) getNextNode(x, y int) Material.Node {
 	return w.next[y*w.width+x]
 }
 
@@ -319,10 +319,10 @@ func (w *World) inBottomBound(y int) bool {
 	return y < w.height
 }
 
-func (w *World) getCurrentGrain(x, y int) Material.Grain {
+func (w *World) getCurrentNode(x, y int) Material.Node {
 	return w.area[y*w.width+x]
 }
 
-// func (w *World) setCurrentGrain(x, y int, setTo Material.Grain) {
+// func (w *World) setCurrentNode(x, y int, setTo Material.Node) {
 // 	w.area[y*w.width+x] = setTo
 // }

@@ -8,25 +8,25 @@ import (
 )
 
 func NewTestWorld(width, height int) *World {
-	area := make([]Material.Grain, width*height)
-	next := make([]Material.Grain, width*height)
-	zero := make([]Material.Grain, width*height)
-	heldGrain := Material.Sand // Default grain type
+	area := make([]Material.Node, width*height)
+	next := make([]Material.Node, width*height)
+	zero := make([]Material.Node, width*height)
+	heldNode := Material.Sand // Default grain type
 	w := &World{
-		area:      area,
-		next:      next,
-		zero:      zero,
-		width:     width,
-		height:    height,
-		heldGrain: heldGrain,
-		paused:    false,
+		area:     area,
+		next:     next,
+		zero:     zero,
+		width:    width,
+		height:   height,
+		heldNode: heldNode,
+		paused:   false,
 	}
 	w.testInit()
 	return w
 }
 
-func randMaterial() Material.Grain {
-	return Material.Grain(utils.RandInt(5) + 1) // 5 materials available not counting blank
+func randMaterial() Material.Node {
+	return Material.Node(utils.RandInt(5) + 1) // 5 materials available not counting blank
 }
 
 func (w *World) testInit() {
