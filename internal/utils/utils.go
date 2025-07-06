@@ -56,12 +56,12 @@ func CountValue[T comparable](slice []T, target T) int {
 	return count
 }
 
-func RandomDirection() int {
-	randomOffset := 1
-	if rand.Intn(2) == 0 {
-		randomOffset = -1
+func RandomDirection(chance int) (Direction, bool) {
+	// chance: chance out of 100 that the return will be a direction
+	if RandInt(100) >= chance {
+		return Hold, false
 	}
-	return randomOffset
+	return Direction(RandInt(8)), true
 }
 
 func RandomDownDiagonal() (Direction, Direction) {

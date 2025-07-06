@@ -12,6 +12,7 @@ import (
 type World struct {
 	area      []Material.Grain
 	next      []Material.Grain
+	zero      []Material.Grain
 	width     int
 	height    int
 	heldGrain Material.Grain
@@ -21,10 +22,12 @@ type World struct {
 func NewWorld(width, height int) *World {
 	area := make([]Material.Grain, width*height)
 	next := make([]Material.Grain, width*height)
+	zero := make([]Material.Grain, width*height)
 	heldGrain := Material.Sand // Default grain type
 	w := &World{
 		area:      area,
 		next:      next,
+		zero:      zero,
 		width:     width,
 		height:    height,
 		heldGrain: heldGrain,
@@ -78,7 +81,7 @@ func (w *World) Update() {
 
 func (w *World) UpdateWorld() {
 	// Update logic for the world can be added here
-	w.next = make([]Material.Grain, w.width*w.height)
+	_ = copy(w.next, w.zero)
 
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
@@ -186,11 +189,19 @@ func (w *World) holdOrRise(x, y int) {
 }
 
 func (w *World) randomMove(x, y int) bool {
-	dir := utils.RandInt(9) // Each of the 8 directions. Increase value for lower chance to move.
-	if dir > 7 {
-		return false
+
+	randomDir, ok := utils.RandomDirection(80)
+
+	if ok {
+		_, dy := randomDir.Delta()
+		if !w.inBottomBound(y+dy) || y+dy <= 0 {
+			return false
+		}
+		// fmt.Printf("RMove x: %d, y: %d, dir: %d\n", x, y, randomDir)
+		return w.directionalGrainCheck(x, y, randomDir)
 	}
-	return w.directionalGrainCheck(x, y, utils.Direction(dir))
+	return false
+
 }
 
 func (w *World) defaultHold(x, y int) bool {
@@ -205,11 +216,11 @@ func (w *World) defaultHold(x, y int) bool {
 
 func (w *World) holdAtBottom(x, y int) bool {
 	selfPhase := w.getCurrentGrain(x, y).GetPhase()
-	if w.isBottomBound(y) && selfPhase != Material.Solid {
+	if !w.inBottomBound(y+1) && selfPhase != Material.Solid {
 		w.holdOrRise(x, y)
 		return true
 	}
-	if w.isBottomBound(y) {
+	if !w.inBottomBound(y + 1) {
 		w.setNextGrainToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
 		return true
 	}
@@ -304,8 +315,8 @@ func (w *World) inLateralBounds(x, dir int) bool {
 	return x-dir > 0 && x+dir < w.width
 }
 
-func (w *World) isBottomBound(y int) bool {
-	return y+1 >= w.height
+func (w *World) inBottomBound(y int) bool {
+	return y < w.height
 }
 
 func (w *World) getCurrentGrain(x, y int) Material.Grain {
