@@ -67,14 +67,14 @@ func (w *World) Draw(pixels []byte) {
 func (w *World) Update() {
 	if !w.paused {
 		w.UpdateWorld()
-		fmt.Printf("Blank: %d, Sand: %d, Water: %d, Rock: %d, Lava: %d, Steam: %d\n",
-			utils.CountValue(w.next, Material.Blank),
-			utils.CountValue(w.next, Material.Sand),
-			utils.CountValue(w.next, Material.Water),
-			utils.CountValue(w.next, Material.Rock),
-			utils.CountValue(w.next, Material.Lava),
-			utils.CountValue(w.next, Material.Steam),
-		)
+		// fmt.Printf("Blank: %d, Sand: %d, Water: %d, Rock: %d, Lava: %d, Steam: %d\n",
+		// 	utils.CountValue(w.next, Material.Blank),
+		// 	utils.CountValue(w.next, Material.Sand),
+		// 	utils.CountValue(w.next, Material.Water),
+		// 	utils.CountValue(w.next, Material.Rock),
+		// 	utils.CountValue(w.next, Material.Lava),
+		// 	utils.CountValue(w.next, Material.Steam),
+		// )
 	}
 	w.handleInput()
 }
@@ -82,13 +82,15 @@ func (w *World) Update() {
 func (w *World) UpdateWorld() {
 	// Update logic for the world can be added here
 	_ = copy(w.next, w.zero)
+	// w.next = make([]Material.Node, w.width*w.height)
 
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
 			w.updateFuncs(x, y)
 		}
 	}
-	w.area = w.next
+	_ = copy(w.area, w.next)
+	// w.area = w.next
 }
 
 type setterFunctions func(*World, int, int) bool
@@ -152,7 +154,7 @@ func (w *World) handleInput() {
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButton0) {
 		mouse_pos := utils.Point{X: 0, Y: 0}
 		mouse_pos.X, mouse_pos.Y = ebiten.CursorPosition()
-		w.next[mouse_pos.Y*w.width+mouse_pos.X] = w.heldNode
+		w.area[mouse_pos.Y*w.width+mouse_pos.X] = w.heldNode
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
