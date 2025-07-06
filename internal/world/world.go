@@ -2,7 +2,6 @@ package World
 
 import (
 	"fmt"
-	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -38,7 +37,7 @@ func NewWorld(width, height int) *World {
 func (w *World) init() {
 	bottomHalf := w.width * w.height / 2 // Only apply to bottom half to speed up init
 	for i := range bottomHalf {
-		if rand.Intn(30) == 0 {
+		if utils.RandInt(30) == 0 {
 			w.area[bottomHalf+i] = Material.Sand // Randomly set some points to sand
 		} else {
 			w.area[bottomHalf+i] = Material.Blank
@@ -65,10 +64,13 @@ func (w *World) Draw(pixels []byte) {
 func (w *World) Update() {
 	if !w.paused {
 		w.UpdateWorld()
-		fmt.Printf("Blank: %d, Sand: %d, Water: %d\n",
+		fmt.Printf("Blank: %d, Sand: %d, Water: %d, Rock: %d, Lava: %d, Steam: %d\n",
 			utils.CountValue(w.next, Material.Blank),
 			utils.CountValue(w.next, Material.Sand),
 			utils.CountValue(w.next, Material.Water),
+			utils.CountValue(w.next, Material.Rock),
+			utils.CountValue(w.next, Material.Lava),
+			utils.CountValue(w.next, Material.Steam),
 		)
 	}
 	w.handleInput()
@@ -115,13 +117,22 @@ var grainFuncs = map[Material.Grain][]setterFunctions{
 		(*World).trySetLateral,
 		(*World).defaultHold,
 	},
+	Material.Steam: {
+		(*World).randomMove,
+		(*World).defaultHold,
+	},
 }
 
 func (w *World) updateFuncs(x, y int) {
 
+	// If a material makes it to the top of the screen, ignore it so it disappears.
+	if y == 0 {
+		return
+	}
+
 	selfMaterial := w.getCurrentGrain(x, y)
 
-	if selfMaterial == 0 {
+	if selfMaterial == Material.Blank {
 		return
 	}
 
@@ -165,7 +176,7 @@ func (w *World) handleInput() {
 func (w *World) holdOrRise(x, y int) {
 	selfMaterial := w.getCurrentGrain(x, y)
 	// If no movement is possible and haven't already been replaced, stay in place
-	if w.isNextGrain(x, y, utils.Hold, Material.Blank) {
+	if w.getNextGrain(x, y) == Material.Blank {
 		w.setNextGrainToSelf(x, y, utils.Hold)
 	} else {
 		// For a liquid, find the first position above the invalid home position
@@ -174,9 +185,17 @@ func (w *World) holdOrRise(x, y int) {
 	}
 }
 
+func (w *World) randomMove(x, y int) bool {
+	dir := utils.RandInt(9) // Each of the 8 directions. Increase value for lower chance to move.
+	if dir > 7 {
+		return false
+	}
+	return w.directionalGrainCheck(x, y, utils.Direction(dir))
+}
+
 func (w *World) defaultHold(x, y int) bool {
 	selfPhase := w.getCurrentGrain(x, y).GetPhase()
-	if selfPhase == Material.Liquid {
+	if selfPhase != Material.Solid {
 		w.holdOrRise(x, y)
 		return true
 	}
@@ -186,7 +205,7 @@ func (w *World) defaultHold(x, y int) bool {
 
 func (w *World) holdAtBottom(x, y int) bool {
 	selfPhase := w.getCurrentGrain(x, y).GetPhase()
-	if w.isBottomBound(y) && selfPhase == Material.Liquid {
+	if w.isBottomBound(y) && selfPhase != Material.Solid {
 		w.holdOrRise(x, y)
 		return true
 	}
@@ -209,22 +228,41 @@ func (w *World) trySetBelow(x, y int) bool {
 
 func (w *World) directionalGrainCheck(x, y int, dir utils.Direction) bool {
 	dx, dy := dir.Delta()
+
+	if !w.inLateralBounds(x, dx) {
+		return false
+	}
+
+	nextMat := w.getNextGrain(x+dx, y+dy)
+
+	if nextMat != Material.Blank {
+		return false
+	}
+
 	selfMat := w.getCurrentGrain(x, y)
 	tgtMat := w.getCurrentGrain(x+dx, y+dy)
-	nextMat := w.getNextGrain(x+dx, y+dy)
-	return selfMat.GetDensity() > tgtMat.GetDensity() && nextMat == Material.Blank
+
+	// TODO: Figure out how to prevent duplications occurring during interactions.
+	// Current best idea is to only allow when moving down, and to make change occur on current frame, which feels off.
+	if result, ok := Material.MaterialInteractions[[2]Material.Grain{selfMat, tgtMat}]; ok {
+		w.setNextGrainTo(x, y, result[0])
+		w.setNextGrainTo(x+dx, y+dy, result[1])
+		return true
+	}
+
+	if selfMat.GetDensity() > tgtMat.GetDensity() {
+		w.setNextGrainToSelf(x, y, dir)
+		return true
+	}
+	return false
 }
 
 func (w *World) trySetLateral(x, y int) bool {
 	firstDir, secondDir := utils.RandomLateral()
-	dx, _ := firstDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir) {
-		w.setNextGrainToSelf(x, y, firstDir)
+	if w.directionalGrainCheck(x, y, firstDir) {
 		return true
 	}
-	dx, _ = secondDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir) {
-		w.setNextGrainToSelf(x, y, secondDir)
+	if w.directionalGrainCheck(x, y, secondDir) {
 		return true
 	}
 	return false
@@ -232,14 +270,10 @@ func (w *World) trySetLateral(x, y int) bool {
 
 func (w *World) trySetDiagonal(x, y int) bool {
 	firstDir, secondDir := utils.RandomDownDiagonal()
-	dx, _ := firstDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, firstDir) {
-		w.setNextGrainToSelf(x, y, firstDir)
+	if w.directionalGrainCheck(x, y, firstDir) {
 		return true
 	}
-	dx, _ = secondDir.Delta()
-	if w.inLateralBounds(x, dx) && w.directionalGrainCheck(x, y, secondDir) {
-		w.setNextGrainToSelf(x, y, secondDir)
+	if w.directionalGrainCheck(x, y, secondDir) {
 		return true
 	}
 	return false
@@ -247,20 +281,10 @@ func (w *World) trySetDiagonal(x, y int) bool {
 
 func (w *World) nextNearestBlankAbove(x, y int) int {
 	dy := y
-	for !w.isNextGrain(x, dy, utils.Hold, Material.Blank) && dy != 0 {
+	for !(w.getNextGrain(x, dy) == Material.Blank) && dy != 0 {
 		dy -= 1
 	}
 	return dy
-}
-
-func (w *World) isNextGrain(x, y int, dir utils.Direction, checkFor Material.Grain) bool {
-	dx, dy := dir.Delta()
-	return w.next[(y+dy)*w.width+x+dx] == checkFor
-}
-
-func (w *World) isGrain(x, y int, dir utils.Direction, checkFor Material.Grain) bool {
-	dx, dy := dir.Delta()
-	return w.area[(y+dy)*w.width+x+dx] == checkFor
 }
 
 func (w *World) setNextGrainTo(x, y int, setTo Material.Grain) {
@@ -287,3 +311,7 @@ func (w *World) isBottomBound(y int) bool {
 func (w *World) getCurrentGrain(x, y int) Material.Grain {
 	return w.area[y*w.width+x]
 }
+
+// func (w *World) setCurrentGrain(x, y int, setTo Material.Grain) {
+// 	w.area[y*w.width+x] = setTo
+// }

@@ -9,6 +9,7 @@ const (
 	Sand
 	Rock
 	Lava
+	Steam
 )
 
 type Phase int
@@ -30,54 +31,35 @@ const (
 	LightSolid
 )
 
-// type grainStruct struct {
-// 	phase   Phase
-// 	color   []byte
-// 	density Density
-// }
-
-var grainPhases = map[Grain]Phase{
-	Blank: Empty,
-	Sand:  Solid,
-	Water: Liquid,
-	Rock:  Solid,
-	Lava:  Liquid,
+type grainData struct {
+	phase   Phase
+	density Density
+	color   []byte
 }
 
-var grainColors = map[Grain][]byte{
-	Blank: {0x00, 0x00, 0x00, 0xff},
-	Sand:  {0xde, 0xbd, 0x1a, 0xff},
-	Water: {0x00, 0x00, 0xff, 0xff},
-	Rock:  {0x80, 0x85, 0x88, 0xff},
-	Lava:  {0xff, 0x68, 0x51, 0xff},
-}
-
-var grainDensity = map[Grain]Density{
-	Blank: Zero,
-	Water: LightLiquid,
-	Sand:  LightSolid,
-	Rock:  LightSolid,
-	Lava:  HeavyLiquid,
+var grainInfo = []grainData{
+	{phase: Empty, density: Zero, color: []byte{0x00, 0x00, 0x00, 0xff}},         // Blank
+	{phase: Liquid, density: LightLiquid, color: []byte{0x00, 0x00, 0xff, 0xff}}, // Water
+	{phase: Solid, density: LightSolid, color: []byte{0xde, 0xbd, 0x1a, 0xff}},   // Sand
+	{phase: Solid, density: LightSolid, color: []byte{0x80, 0x85, 0x88, 0xff}},   // Rock
+	{phase: Liquid, density: HeavyLiquid, color: []byte{0xff, 0x68, 0x51, 0xff}}, // Lava
+	{phase: Gas, density: LightGas, color: []byte{0xad, 0xb7, 0xc7, 0xa8}},       // Steam
 }
 
 func (g Grain) GetDensity() Density {
-	if dens, ok := grainDensity[g]; ok {
-		return dens
-	}
-	return Zero
+	return grainInfo[g].density
 }
 
 func (g Grain) GetColor() []byte {
-	if color, ok := grainColors[g]; ok {
-		return color
-	}
-	return grainColors[Blank]
+	return grainInfo[g].color
 }
 
 func (g Grain) GetPhase() Phase {
+	return grainInfo[g].phase
+}
 
-	if phase, ok := grainPhases[g]; ok {
-		return phase
-	}
-	return Empty
+var MaterialInteractions = map[[2]Grain][2]Grain{
+	{Lava, Water}:  {Rock, Steam},
+	{Water, Lava}:  {Steam, Rock},
+	{Steam, Steam}: {Water, Water},
 }

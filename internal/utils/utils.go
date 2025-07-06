@@ -84,3 +84,8 @@ func RandomLateral() (Direction, Direction) {
 
 	return Right, Left
 }
+
+func RandInt(r int) int {
+	// in case I change the RNG method later
+	return rand.Intn(r)
+}
