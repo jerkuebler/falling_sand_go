@@ -194,7 +194,7 @@ func (w *World) randomMove(x, y int) bool {
 
 	if ok {
 		_, dy := randomDir.Delta()
-		if !w.inBottomBound(y+dy) || y+dy <= 0 {
+		if !w.inBottomBound(y + dy) {
 			return false
 		}
 		// fmt.Printf("RMove x: %d, y: %d, dir: %d\n", x, y, randomDir)
@@ -312,7 +312,7 @@ func (w *World) getNextGrain(x, y int) Material.Grain {
 }
 
 func (w *World) inLateralBounds(x, dir int) bool {
-	return x-dir > 0 && x+dir < w.width
+	return x+dir > 0 && x+dir < w.width
 }
 
 func (w *World) inBottomBound(y int) bool {
