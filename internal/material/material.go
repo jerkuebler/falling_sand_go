@@ -12,6 +12,14 @@ const (
 	Steam
 )
 
+type Change int
+
+const (
+	NoChange Change = iota
+	Swap
+	Interact
+)
+
 type Phase int
 
 const (

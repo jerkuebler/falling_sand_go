@@ -16,7 +16,7 @@ import (
 const (
 	screenWidth  = 320
 	screenHeight = 240
-	screenScale  = 4
+	screenScale  = 3
 )
 
 var (

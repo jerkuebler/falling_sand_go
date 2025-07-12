@@ -8,14 +8,16 @@ import (
 )
 
 func NewTestWorld(width, height int) *World {
-	area := make([]Material.Node, width*height)
-	next := make([]Material.Node, width*height)
-	zero := make([]Material.Node, width*height)
-	heldNode := Material.Sand // Default grain type
+	area := make([]nodeUpdate, width*height)
+	next := make([]nodeUpdate, width*height)
+	zero := make([]nodeUpdate, width*height)
+	zeroCopy := make([]nodeUpdate, width*height)
+	heldNode := Material.Sand // Default node type
 	w := &World{
 		area:     area,
 		next:     next,
 		zero:     zero,
+		zeroCopy: zeroCopy,
 		width:    width,
 		height:   height,
 		heldNode: heldNode,
@@ -33,9 +35,9 @@ func (w *World) testInit() {
 	// Do not instantiate in top row, as we're not processing in the top row
 	for i := range w.width * (w.height - 1) {
 		if utils.RandInt(2) == 0 {
-			w.area[i+w.width] = randMaterial() // Randomly set some points to sand
+			w.area[i+w.width] = nodeUpdate{randMaterial(), 0, false} // Randomly set all points
 		} else {
-			w.area[i+w.width] = Material.Blank
+			w.area[i+w.width] = nodeUpdate{Material.Blank, 0, false}
 		}
 	}
 }
