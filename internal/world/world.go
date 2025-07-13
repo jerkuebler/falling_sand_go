@@ -10,28 +10,28 @@ import (
 )
 
 type World struct {
-	area     []Material.Node
-	next     []Material.Node
-	zero     []Material.Node
-	width    int
-	height   int
-	heldNode Material.Node
-	paused   bool
+	area         []Material.Node
+	next         []Material.Node
+	zero         []Material.Node
+	width        int
+	height       int
+	heldNodeType Material.NodeType
+	paused       bool
 }
 
 func NewWorld(width, height int) *World {
 	area := make([]Material.Node, width*height)
 	next := make([]Material.Node, width*height)
 	zero := make([]Material.Node, width*height)
-	heldNode := Material.Sand // Default Node type
+	heldNodeType := Material.SandType // Default Node type
 	w := &World{
-		area:     area,
-		next:     next,
-		zero:     zero,
-		width:    width,
-		height:   height,
-		heldNode: heldNode,
-		paused:   false,
+		area:         area,
+		next:         next,
+		zero:         zero,
+		width:        width,
+		height:       height,
+		heldNodeType: heldNodeType,
+		paused:       false,
 	}
 	w.init()
 	return w
@@ -41,22 +41,22 @@ func (w *World) init() {
 	bottomHalf := w.width * w.height / 2 // Only apply to bottom half to speed up init
 	for i := range bottomHalf {
 		if utils.RandInt(30) == 0 {
-			w.area[bottomHalf+i] = Material.Sand // Randomly set some points to sand
+			w.area[bottomHalf+i] = Material.MakeNode(Material.SandType) // Randomly set some points to sand
 		} else {
-			w.area[bottomHalf+i] = Material.Blank
+			w.area[bottomHalf+i] = Material.MakeNode(Material.BlankType)
 		}
 	}
 }
 
 func (w *World) Draw(pixels []byte) {
 	for i, v := range w.area {
-		if v != 0 {
-			color := Material.Node(v).GetColor()
+		if v.NodeType != Material.BlankType {
+			color := v.NodeType.GetColor()
 			for j := range 4 {
 				pixels[i*4+j] = color[j]
 			}
 		} else {
-			color := Material.Blank.GetColor()
+			color := Material.BlankType.GetColor()
 			for j := range 4 {
 				pixels[i*4+j] = color[j]
 			}
@@ -67,14 +67,14 @@ func (w *World) Draw(pixels []byte) {
 func (w *World) Update() {
 	if !w.paused {
 		w.UpdateWorld()
-		// fmt.Printf("Blank: %d, Sand: %d, Water: %d, Rock: %d, Lava: %d, Steam: %d\n",
-		// 	utils.CountValue(w.next, Material.Blank),
-		// 	utils.CountValue(w.next, Material.Sand),
-		// 	utils.CountValue(w.next, Material.Water),
-		// 	utils.CountValue(w.next, Material.Rock),
-		// 	utils.CountValue(w.next, Material.Lava),
-		// 	utils.CountValue(w.next, Material.Steam),
-		// )
+		fmt.Printf("Blank: %d, Sand: %d, Water: %d, Rock: %d, Lava: %d, Steam: %d\n",
+			utils.CountValue(w.next, Material.Node{NodeType: Material.BlankType, Dirty: false}),
+			utils.CountValue(w.next, Material.Node{NodeType: Material.SandType, Dirty: false}),
+			utils.CountValue(w.next, Material.Node{NodeType: Material.WaterType, Dirty: false}),
+			utils.CountValue(w.next, Material.Node{NodeType: Material.RockType, Dirty: false}),
+			utils.CountValue(w.next, Material.Node{NodeType: Material.LavaType, Dirty: false}),
+			utils.CountValue(w.next, Material.Node{NodeType: Material.SteamType, Dirty: false}),
+		)
 	}
 	w.handleInput()
 }
@@ -87,6 +87,7 @@ func (w *World) UpdateWorld() {
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
 			w.updateFuncs(x, y)
+			w.area[y*w.width+x].Dirty = true
 		}
 	}
 	_ = copy(w.area, w.next)
@@ -95,34 +96,34 @@ func (w *World) UpdateWorld() {
 
 type setterFunctions func(*World, int, int) bool
 
-var nodeFuncs = map[Material.Node][]setterFunctions{
-	Material.Sand: {
+var nodeFuncs = map[Material.NodeType][]setterFunctions{
+	Material.SandType: {
 		(*World).holdAtBottom,
 		(*World).trySetBelow,
 		(*World).trySetDiagonal,
 		(*World).defaultHold,
 	},
-	Material.Water: {
-		(*World).holdAtBottom,
-		(*World).trySetBelow,
-		(*World).trySetDiagonal,
-		(*World).trySetLateral,
-		(*World).defaultHold,
-	},
-	Material.Rock: {
-		(*World).holdAtBottom,
-		(*World).trySetBelow,
-		(*World).trySetDiagonal,
-		(*World).defaultHold,
-	},
-	Material.Lava: {
+	Material.WaterType: {
 		(*World).holdAtBottom,
 		(*World).trySetBelow,
 		(*World).trySetDiagonal,
 		(*World).trySetLateral,
 		(*World).defaultHold,
 	},
-	Material.Steam: {
+	Material.RockType: {
+		(*World).holdAtBottom,
+		(*World).trySetBelow,
+		(*World).trySetDiagonal,
+		(*World).defaultHold,
+	},
+	Material.LavaType: {
+		(*World).holdAtBottom,
+		(*World).trySetBelow,
+		(*World).trySetDiagonal,
+		(*World).trySetLateral,
+		(*World).defaultHold,
+	},
+	Material.SteamType: {
 		(*World).randomMove,
 		(*World).defaultHold,
 	},
@@ -137,11 +138,16 @@ func (w *World) updateFuncs(x, y int) {
 
 	selfMaterial := w.getCurrentNode(x, y)
 
-	if selfMaterial == Material.Blank {
+	if selfMaterial.Dirty {
+		println("Dirty")
 		return
 	}
 
-	for _, setFunc := range nodeFuncs[selfMaterial] {
+	if selfMaterial.NodeType == Material.BlankType {
+		return
+	}
+
+	for _, setFunc := range nodeFuncs[selfMaterial.NodeType] {
 		if setFunc(w, x, y) {
 			return
 		}
@@ -154,23 +160,23 @@ func (w *World) handleInput() {
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButton0) {
 		mouse_pos := utils.Point{X: 0, Y: 0}
 		mouse_pos.X, mouse_pos.Y = ebiten.CursorPosition()
-		w.area[mouse_pos.Y*w.width+mouse_pos.X] = w.heldNode
+		w.area[mouse_pos.Y*w.width+mouse_pos.X] = Material.MakeNode(w.heldNodeType)
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
-		w.heldNode = Material.Sand
+		w.heldNodeType = Material.SandType
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key2) {
-		w.heldNode = Material.Water
+		w.heldNodeType = Material.WaterType
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key3) {
-		w.heldNode = Material.Rock
+		w.heldNodeType = Material.RockType
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key4) {
-		w.heldNode = Material.Lava
+		w.heldNodeType = Material.LavaType
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.Key5) {
@@ -181,7 +187,7 @@ func (w *World) handleInput() {
 func (w *World) holdOrRise(x, y int) {
 	selfMaterial := w.getCurrentNode(x, y)
 	// If no movement is possible and haven't already been replaced, stay in place
-	if w.getNextNode(x, y) == Material.Blank {
+	if w.getNextNode(x, y).NodeType == Material.BlankType {
 		w.setNextNodeToSelf(x, y, utils.Hold)
 	} else {
 		// For a liquid, find the first position above the invalid home position
@@ -207,7 +213,7 @@ func (w *World) randomMove(x, y int) bool {
 }
 
 func (w *World) defaultHold(x, y int) bool {
-	selfPhase := w.getCurrentNode(x, y).GetPhase()
+	selfPhase := w.getCurrentNode(x, y).NodeType.GetPhase()
 	if selfPhase != Material.Solid {
 		w.holdOrRise(x, y)
 		return true
@@ -217,7 +223,7 @@ func (w *World) defaultHold(x, y int) bool {
 }
 
 func (w *World) holdAtBottom(x, y int) bool {
-	selfPhase := w.getCurrentNode(x, y).GetPhase()
+	selfPhase := w.getCurrentNode(x, y).NodeType.GetPhase()
 	if !w.inBottomBound(y+1) && selfPhase != Material.Solid {
 		w.holdOrRise(x, y)
 		return true
@@ -246,20 +252,20 @@ func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
 		return false
 	}
 
-	nextMat := w.getNextNode(x+dx, y+dy)
+	nextMat := w.getNextNode(x+dx, y+dy).NodeType
 
-	if nextMat != Material.Blank {
+	if nextMat != Material.BlankType {
 		return false
 	}
 
-	selfMat := w.getCurrentNode(x, y)
-	tgtMat := w.getCurrentNode(x+dx, y+dy)
+	selfMat := w.getCurrentNode(x, y).NodeType
+	tgtMat := w.getCurrentNode(x+dx, y+dy).NodeType
 
 	// TODO: Figure out how to prevent duplications occurring during interactions.
 	// Current best idea is to only allow when moving down, and to make change occur on current frame, which feels off.
-	if result, ok := Material.MaterialInteractions[[2]Material.Node{selfMat, tgtMat}]; ok {
-		w.setNextNodeTo(x, y, result[0])
-		w.setNextNodeTo(x+dx, y+dy, result[1])
+	if result, ok := Material.MaterialInteractions[[2]Material.NodeType{selfMat, tgtMat}]; ok {
+		w.setNextNodeTo(x, y, Material.MakeNode(result[0]))
+		w.setNextNodeTo(x+dx, y+dy, Material.MakeNode(result[1]))
 		return true
 	}
 
@@ -294,19 +300,24 @@ func (w *World) trySetDiagonal(x, y int) bool {
 
 func (w *World) nextNearestBlankAbove(x, y int) int {
 	dy := y
-	for !(w.getNextNode(x, dy) == Material.Blank) && dy != 0 {
+	for !(w.getNextNode(x, dy).NodeType == Material.BlankType) && dy != 0 {
 		dy -= 1
 	}
 	return dy
 }
 
 func (w *World) setNextNodeTo(x, y int, setTo Material.Node) {
+	w.area[y*w.width+x].Dirty = true
+	setTo.Dirty = false
 	w.next[(y)*w.width+x] = setTo
 }
 
 func (w *World) setNextNodeToSelf(x, y int, dir utils.Direction) {
+	w.area[y*w.width+x].Dirty = true
+	setTo := w.area[y*w.width+x]
+	setTo.Dirty = false
 	dx, dy := dir.Delta()
-	w.next[(y+dy)*w.width+x+dx] = w.area[y*w.width+x]
+	w.next[(y+dy)*w.width+x+dx] = setTo
 }
 
 func (w *World) getNextNode(x, y int) Material.Node {

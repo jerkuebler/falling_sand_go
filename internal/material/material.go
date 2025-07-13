@@ -1,15 +1,27 @@
 package Material
 
-type Node int
+type Node struct {
+	NodeType NodeType
+	Dirty    bool
+}
+
+func MakeNode(nodeType NodeType) Node {
+	return Node{
+		NodeType: nodeType,
+		Dirty:    false,
+	}
+}
+
+type NodeType int
 
 // Use order in enum as relative density, reordering will break functions
 const (
-	Blank Node = iota
-	Water
-	Sand
-	Rock
-	Lava
-	Steam
+	BlankType NodeType = iota
+	WaterType
+	SandType
+	RockType
+	LavaType
+	SteamType
 )
 
 type Phase int
@@ -46,20 +58,20 @@ var nodeInfo = []nodeData{
 	{phase: Gas, density: LightGas, color: []byte{0xad, 0xb7, 0xc7, 0xa8}},       // Steam
 }
 
-func (n Node) GetDensity() Density {
+func (n NodeType) GetDensity() Density {
 	return nodeInfo[n].density
 }
 
-func (n Node) GetColor() []byte {
+func (n NodeType) GetColor() []byte {
 	return nodeInfo[n].color
 }
 
-func (n Node) GetPhase() Phase {
+func (n NodeType) GetPhase() Phase {
 	return nodeInfo[n].phase
 }
 
-var MaterialInteractions = map[[2]Node][2]Node{
-	{Lava, Water}:  {Rock, Steam},
-	{Water, Lava}:  {Steam, Rock},
-	{Steam, Steam}: {Water, Water},
+var MaterialInteractions = map[[2]NodeType][2]NodeType{
+	{LavaType, WaterType}:  {RockType, SteamType},
+	{WaterType, LavaType}:  {SteamType, RockType},
+	{SteamType, SteamType}: {WaterType, WaterType},
 }
