@@ -12,7 +12,6 @@ import (
 type World struct {
 	area         []Material.Node
 	next         []Material.Node
-	zero         []Material.Node
 	width        int
 	height       int
 	heldNodeType Material.NodeType
@@ -22,12 +21,10 @@ type World struct {
 func NewWorld(width, height int) *World {
 	area := make([]Material.Node, width*height)
 	next := make([]Material.Node, width*height)
-	zero := make([]Material.Node, width*height)
-	heldNodeType := Material.SandType // Default Node type
+	heldNodeType := Material.SandType
 	w := &World{
 		area:         area,
 		next:         next,
-		zero:         zero,
 		width:        width,
 		height:       height,
 		heldNodeType: heldNodeType,
@@ -67,22 +64,19 @@ func (w *World) Draw(pixels []byte) {
 func (w *World) Update() {
 	if !w.paused {
 		w.UpdateWorld()
-		fmt.Printf("Blank: %d, Sand: %d, Water: %d, Rock: %d, Lava: %d, Steam: %d\n",
-			utils.CountValue(w.next, Material.Node{NodeType: Material.BlankType, Dirty: false}),
-			utils.CountValue(w.next, Material.Node{NodeType: Material.SandType, Dirty: false}),
-			utils.CountValue(w.next, Material.Node{NodeType: Material.WaterType, Dirty: false}),
-			utils.CountValue(w.next, Material.Node{NodeType: Material.RockType, Dirty: false}),
-			utils.CountValue(w.next, Material.Node{NodeType: Material.LavaType, Dirty: false}),
-			utils.CountValue(w.next, Material.Node{NodeType: Material.SteamType, Dirty: false}),
-		)
+		// fmt.Printf("Blank: %d, Sand: %d, Water: %d, Rock: %d, Lava: %d, Steam: %d\n",
+		// 	utils.CountValue(w.next, Material.Node{NodeType: Material.BlankType, Dirty: false}),
+		// 	utils.CountValue(w.next, Material.Node{NodeType: Material.SandType, Dirty: false}),
+		// 	utils.CountValue(w.next, Material.Node{NodeType: Material.WaterType, Dirty: false}),
+		// 	utils.CountValue(w.next, Material.Node{NodeType: Material.RockType, Dirty: false}),
+		// 	utils.CountValue(w.next, Material.Node{NodeType: Material.LavaType, Dirty: false}),
+		// 	utils.CountValue(w.next, Material.Node{NodeType: Material.SteamType, Dirty: false}),
+		// )
 	}
 	w.handleInput()
 }
 
 func (w *World) UpdateWorld() {
-	// Update logic for the world can be added here
-	_ = copy(w.next, w.zero)
-	// w.next = make([]Material.Node, w.width*w.height)
 
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
@@ -90,8 +84,8 @@ func (w *World) UpdateWorld() {
 			// w.area[y*w.width+x].Dirty = true
 		}
 	}
-	_ = copy(w.area, w.next)
-	// w.area = w.next
+	copy(w.area, w.next)
+	clear(w.next)
 }
 
 type setterFunctions func(*World, int, int) bool
@@ -263,8 +257,8 @@ func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
 	result, ok := Material.MaterialInteractions[[2]Material.NodeType{selfMat.NodeType, tgtMat.NodeType}]
 	if ok && !tgtMat.Dirty {
 		// I have no idea why swapping the results makes the correct transmutations occur
-		w.holdOrRise(x, y, Material.MakeNode(result[1]))
-		w.holdOrRise(x+dx, y+dy, Material.MakeNode(result[0]))
+		w.holdOrRise(x, y, Material.MakeNode(result[0]))
+		w.holdOrRise(x+dx, y+dy, Material.MakeNode(result[1]))
 		return true
 	}
 
@@ -334,7 +328,3 @@ func (w *World) inBottomBound(y int) bool {
 func (w *World) getCurrentNode(x, y int) Material.Node {
 	return w.area[y*w.width+x]
 }
-
-// func (w *World) setCurrentNode(x, y int, setTo Material.Node) {
-// 	w.area[y*w.width+x] = setTo
-// }
