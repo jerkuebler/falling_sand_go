@@ -87,7 +87,7 @@ func (w *World) UpdateWorld() {
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
 			w.updateFuncs(x, y)
-			w.area[y*w.width+x].Dirty = true
+			// w.area[y*w.width+x].Dirty = true
 		}
 	}
 	_ = copy(w.area, w.next)
@@ -138,12 +138,11 @@ func (w *World) updateFuncs(x, y int) {
 
 	selfMaterial := w.getCurrentNode(x, y)
 
-	if selfMaterial.Dirty {
-		println("Dirty")
+	if selfMaterial.NodeType == Material.BlankType {
 		return
 	}
 
-	if selfMaterial.NodeType == Material.BlankType {
+	if selfMaterial.Dirty {
 		return
 	}
 
@@ -153,7 +152,7 @@ func (w *World) updateFuncs(x, y int) {
 		}
 	}
 
-	panic(fmt.Sprintf("The material update function failed somehow during material# %d", selfMaterial))
+	panic(fmt.Sprintf("The material update function failed somehow during material# %d", selfMaterial.NodeType))
 }
 
 func (w *World) handleInput() {
@@ -184,15 +183,14 @@ func (w *World) handleInput() {
 	}
 }
 
-func (w *World) holdOrRise(x, y int) {
-	selfMaterial := w.getCurrentNode(x, y)
+func (w *World) holdOrRise(x, y int, node Material.Node) {
 	// If no movement is possible and haven't already been replaced, stay in place
 	if w.getNextNode(x, y).NodeType == Material.BlankType {
-		w.setNextNodeToSelf(x, y, utils.Hold)
+		w.setNextNodeTo(x, y, 0, 0, node)
 	} else {
 		// For a liquid, find the first position above the invalid home position
 		dy := w.nextNearestBlankAbove(x, y)
-		w.setNextNodeTo(x, dy, selfMaterial)
+		w.setNextNodeTo(x, y, 0, dy, node)
 	}
 }
 
@@ -213,19 +211,26 @@ func (w *World) randomMove(x, y int) bool {
 }
 
 func (w *World) defaultHold(x, y int) bool {
-	selfPhase := w.getCurrentNode(x, y).NodeType.GetPhase()
-	if selfPhase != Material.Solid {
-		w.holdOrRise(x, y)
+	selfNode := w.getCurrentNode(x, y)
+	tgtNode := w.getNextNode(x, y)
+
+	if tgtNode.NodeType == Material.BlankType {
+		w.setNextNodeToSelf(x, y, utils.Hold)
+	}
+
+	if selfNode.NodeType.GetDensity() > tgtNode.NodeType.GetDensity() {
+		w.holdOrRise(x, y, tgtNode)
+		w.setNextNodeToSelf(x, y, utils.Hold)
 		return true
 	}
-	w.setNextNodeToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
+	w.holdOrRise(x, y, selfNode) // If at the bottom edge, stay in place
 	return true
 }
 
 func (w *World) holdAtBottom(x, y int) bool {
-	selfPhase := w.getCurrentNode(x, y).NodeType.GetPhase()
-	if !w.inBottomBound(y+1) && selfPhase != Material.Solid {
-		w.holdOrRise(x, y)
+	selfNode := w.getCurrentNode(x, y)
+	if !w.inBottomBound(y+1) && selfNode.NodeType.GetPhase() != Material.Solid {
+		w.holdOrRise(x, y, selfNode)
 		return true
 	}
 	if !w.inBottomBound(y + 1) {
@@ -236,13 +241,7 @@ func (w *World) holdAtBottom(x, y int) bool {
 }
 
 func (w *World) trySetBelow(x, y int) bool {
-
-	if w.directionalNodeCheck(x, y, utils.Below) {
-		w.setNextNodeToSelf(x, y, utils.Below)
-		return true
-	}
-
-	return false
+	return w.directionalNodeCheck(x, y, utils.Below)
 }
 
 func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
@@ -258,18 +257,18 @@ func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
 		return false
 	}
 
-	selfMat := w.getCurrentNode(x, y).NodeType
-	tgtMat := w.getCurrentNode(x+dx, y+dy).NodeType
+	selfMat := w.getCurrentNode(x, y)
+	tgtMat := w.getCurrentNode(x+dx, y+dy)
 
-	// TODO: Figure out how to prevent duplications occurring during interactions.
-	// Current best idea is to only allow when moving down, and to make change occur on current frame, which feels off.
-	if result, ok := Material.MaterialInteractions[[2]Material.NodeType{selfMat, tgtMat}]; ok {
-		w.setNextNodeTo(x, y, Material.MakeNode(result[0]))
-		w.setNextNodeTo(x+dx, y+dy, Material.MakeNode(result[1]))
+	result, ok := Material.MaterialInteractions[[2]Material.NodeType{selfMat.NodeType, tgtMat.NodeType}]
+	if ok && !tgtMat.Dirty {
+		// I have no idea why swapping the results makes the correct transmutations occur
+		w.holdOrRise(x, y, Material.MakeNode(result[1]))
+		w.holdOrRise(x+dx, y+dy, Material.MakeNode(result[0]))
 		return true
 	}
 
-	if selfMat.GetDensity() > tgtMat.GetDensity() {
+	if selfMat.NodeType.GetDensity() > tgtMat.NodeType.GetDensity() {
 		w.setNextNodeToSelf(x, y, dir)
 		return true
 	}
@@ -299,17 +298,17 @@ func (w *World) trySetDiagonal(x, y int) bool {
 }
 
 func (w *World) nextNearestBlankAbove(x, y int) int {
-	dy := y
-	for !(w.getNextNode(x, dy).NodeType == Material.BlankType) && dy != 0 {
+	dy := 0
+	for !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) && y+dy != 0 {
 		dy -= 1
 	}
 	return dy
 }
 
-func (w *World) setNextNodeTo(x, y int, setTo Material.Node) {
+func (w *World) setNextNodeTo(x, y, dx, dy int, setTo Material.Node) {
 	w.area[y*w.width+x].Dirty = true
 	setTo.Dirty = false
-	w.next[(y)*w.width+x] = setTo
+	w.next[(y+dy)*w.width+x+dx] = setTo
 }
 
 func (w *World) setNextNodeToSelf(x, y int, dir utils.Direction) {
