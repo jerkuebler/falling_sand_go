@@ -35,29 +35,27 @@ func NewWorld(width, height int) *World {
 }
 
 func (w *World) init() {
-	bottomHalf := w.width * w.height / 2 // Only apply to bottom half to speed up init
+	bottomHalf := w.width * w.height / 2
 	for i := range bottomHalf {
 		if utils.RandInt(30) == 0 {
-			w.area[bottomHalf+i] = Material.MakeNode(Material.SandType) // Randomly set some points to sand
-		} else {
-			w.area[bottomHalf+i] = Material.MakeNode(Material.BlankType)
+			w.area[bottomHalf+i] = Material.MakeNode(Material.SandType)
 		}
 	}
 }
 
 func (w *World) Draw(pixels []byte) {
+	var color []byte
+	blankColor := Material.BlankType.GetColor()
 	for i, v := range w.area {
 		if v.NodeType != Material.BlankType {
-			color := v.NodeType.GetColor()
-			for j := range 4 {
-				pixels[i*4+j] = color[j]
-			}
+			color = v.NodeType.GetColor()
 		} else {
-			color := Material.BlankType.GetColor()
-			for j := range 4 {
-				pixels[i*4+j] = color[j]
-			}
+			color = blankColor
 		}
+		pixels[i*4] = color[0]
+		pixels[i*4+1] = color[1]
+		pixels[i*4+2] = color[2]
+		pixels[i*4+3] = color[3]
 	}
 }
 
@@ -81,7 +79,6 @@ func (w *World) UpdateWorld() {
 	for y := 0; y < w.height; y++ {
 		for x := 0; x < w.width; x++ {
 			w.updateFuncs(x, y)
-			// w.area[y*w.width+x].Dirty = true
 		}
 	}
 	copy(w.area, w.next)
@@ -92,43 +89,41 @@ type setterFunctions func(*World, int, int) bool
 
 var nodeFuncs = map[Material.NodeType][]setterFunctions{
 	Material.SandType: {
-		(*World).holdAtBottom,
+		(*World).holdAtVerticalEdge,
 		(*World).trySetBelow,
-		(*World).trySetDiagonal,
+		(*World).trySetDownDiagonal,
 		(*World).defaultHold,
 	},
 	Material.WaterType: {
-		(*World).holdAtBottom,
+		(*World).holdAtVerticalEdge,
 		(*World).trySetBelow,
-		(*World).trySetDiagonal,
+		(*World).trySetDownDiagonal,
 		(*World).trySetLateral,
 		(*World).defaultHold,
 	},
 	Material.RockType: {
-		(*World).holdAtBottom,
+		(*World).holdAtVerticalEdge,
 		(*World).trySetBelow,
-		(*World).trySetDiagonal,
+		(*World).trySetDownDiagonal,
 		(*World).defaultHold,
 	},
 	Material.LavaType: {
-		(*World).holdAtBottom,
+		(*World).holdAtVerticalEdge,
 		(*World).trySetBelow,
-		(*World).trySetDiagonal,
+		(*World).trySetDownDiagonal,
 		(*World).trySetLateral,
 		(*World).defaultHold,
 	},
 	Material.SteamType: {
-		(*World).randomMove,
+		(*World).holdAtVerticalEdge,
+		(*World).trySetAbove,
+		(*World).trySetUpDiagonal,
+		(*World).trySetLateral,
 		(*World).defaultHold,
 	},
 }
 
 func (w *World) updateFuncs(x, y int) {
-
-	// If a material makes it to the top of the screen, ignore it so it disappears.
-	if y == 0 {
-		return
-	}
 
 	selfMaterial := w.getCurrentNode(x, y)
 
@@ -177,14 +172,18 @@ func (w *World) handleInput() {
 	}
 }
 
-func (w *World) holdOrRise(x, y int, node Material.Node) {
+func (w *World) holdOrDisplace(x, y int, node Material.Node) {
+
 	// If no movement is possible and haven't already been replaced, stay in place
 	if w.getNextNode(x, y).NodeType == Material.BlankType {
 		w.setNextNodeTo(x, y, 0, 0, node)
 	} else {
 		// For a liquid, find the first position above the invalid home position
-		dy := w.nextNearestBlankAbove(x, y)
-		w.setNextNodeTo(x, y, 0, dy, node)
+		dy, ok := w.nearestBlank(x, y)
+		if ok {
+			w.setNextNodeTo(x, y, 0, dy, node)
+		}
+		// if we fail to find a valid position, ignore the particle and let it disappear
 	}
 }
 
@@ -193,8 +192,8 @@ func (w *World) randomMove(x, y int) bool {
 	randomDir, ok := utils.RandomDirection(80)
 
 	if ok {
-		_, dy := randomDir.Delta()
-		if !w.inBottomBound(y + dy) {
+		// _, dy := randomDir.Delta()
+		if !w.inVerticalBounds(y) {
 			return false
 		}
 		// fmt.Printf("RMove x: %d, y: %d, dir: %d\n", x, y, randomDir)
@@ -213,29 +212,29 @@ func (w *World) defaultHold(x, y int) bool {
 	}
 
 	if selfNode.NodeType.GetDensity() > tgtNode.NodeType.GetDensity() {
-		w.holdOrRise(x, y, tgtNode)
+		w.holdOrDisplace(x, y, tgtNode)
 		w.setNextNodeToSelf(x, y, utils.Hold)
 		return true
 	}
-	w.holdOrRise(x, y, selfNode) // If at the bottom edge, stay in place
+	w.holdOrDisplace(x, y, selfNode) // If at the bottom edge, stay in place
 	return true
 }
 
-func (w *World) holdAtBottom(x, y int) bool {
-	selfNode := w.getCurrentNode(x, y)
-	if !w.inBottomBound(y+1) && selfNode.NodeType.GetPhase() != Material.Solid {
-		w.holdOrRise(x, y, selfNode)
-		return true
-	}
-	if !w.inBottomBound(y + 1) {
-		w.setNextNodeToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
-		return true
-	}
-	return false
-}
+func (w *World) holdAtVerticalEdge(x, y int) bool {
 
-func (w *World) trySetBelow(x, y int) bool {
-	return w.directionalNodeCheck(x, y, utils.Below)
+	if w.inVerticalBounds(y) {
+		return false
+	}
+
+	selfNode := w.getCurrentNode(x, y)
+	if selfNode.NodeType.GetPhase() != Material.Solid {
+		w.holdOrDisplace(x, y, selfNode)
+		return true
+	}
+
+	w.setNextNodeToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
+	return true
+
 }
 
 func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
@@ -256,9 +255,8 @@ func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
 
 	result, ok := Material.MaterialInteractions[[2]Material.NodeType{selfMat.NodeType, tgtMat.NodeType}]
 	if ok && !tgtMat.Dirty {
-		// I have no idea why swapping the results makes the correct transmutations occur
-		w.holdOrRise(x, y, Material.MakeNode(result[0]))
-		w.holdOrRise(x+dx, y+dy, Material.MakeNode(result[1]))
+		w.holdOrDisplace(x, y, Material.MakeNode(result[0]))
+		w.holdOrDisplace(x+dx, y+dy, Material.MakeNode(result[1]))
 		return true
 	}
 
@@ -267,6 +265,14 @@ func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
 		return true
 	}
 	return false
+}
+
+func (w *World) trySetBelow(x, y int) bool {
+	return w.directionalNodeCheck(x, y, utils.Below)
+}
+
+func (w *World) trySetAbove(x, y int) bool {
+	return w.directionalNodeCheck(x, y, utils.Above)
 }
 
 func (w *World) trySetLateral(x, y int) bool {
@@ -280,7 +286,18 @@ func (w *World) trySetLateral(x, y int) bool {
 	return false
 }
 
-func (w *World) trySetDiagonal(x, y int) bool {
+func (w *World) trySetUpDiagonal(x, y int) bool {
+	firstDir, secondDir := utils.RandomUpDiagonal()
+	if w.directionalNodeCheck(x, y, firstDir) {
+		return true
+	}
+	if w.directionalNodeCheck(x, y, secondDir) {
+		return true
+	}
+	return false
+}
+
+func (w *World) trySetDownDiagonal(x, y int) bool {
 	firstDir, secondDir := utils.RandomDownDiagonal()
 	if w.directionalNodeCheck(x, y, firstDir) {
 		return true
@@ -291,12 +308,27 @@ func (w *World) trySetDiagonal(x, y int) bool {
 	return false
 }
 
-func (w *World) nextNearestBlankAbove(x, y int) int {
+func (w *World) nearestBlank(x, y int) (int, bool) {
 	dy := 0
-	for !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) && y+dy != 0 {
+
+	for !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) && y+dy >= 0 {
 		dy -= 1
 	}
-	return dy
+
+	if dy < 0 {
+		return dy, true
+	}
+
+	dy = 0
+	for !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) && y+dy <= w.height {
+		dy += 1
+	}
+
+	if dy > w.height {
+		return 0, false
+	}
+
+	return dy, true
 }
 
 func (w *World) setNextNodeTo(x, y, dx, dy int, setTo Material.Node) {
@@ -321,8 +353,8 @@ func (w *World) inLateralBounds(x, dir int) bool {
 	return x+dir > 0 && x+dir < w.width
 }
 
-func (w *World) inBottomBound(y int) bool {
-	return y < w.height
+func (w *World) inVerticalBounds(y int) bool {
+	return y+1 < w.height && y-1 > 0
 }
 
 func (w *World) getCurrentNode(x, y int) Material.Node {

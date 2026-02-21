@@ -64,6 +64,16 @@ func RandomDirection(chance int) (Direction, bool) {
 	return Direction(RandInt(8)), true
 }
 
+func RandomUpDiagonal() (Direction, Direction) {
+	r := rand.Intn(2)
+
+	if r == 0 {
+		return AboveLeft, AboveRight
+	}
+
+	return AboveRight, AboveLeft
+}
+
 func RandomDownDiagonal() (Direction, Direction) {
 	r := rand.Intn(2)
 
