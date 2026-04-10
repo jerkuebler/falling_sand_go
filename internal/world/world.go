@@ -227,14 +227,27 @@ func (w *World) holdAtVerticalEdge(x, y int) bool {
 	}
 
 	selfNode := w.getCurrentNode(x, y)
-	if selfNode.NodeType.GetPhase() != Material.Solid {
+	phase := selfNode.NodeType.GetPhase()
+	atTop := y-1 < 0
+	atBottom := y+1 >= w.height
+
+	// Gas at top edge: can't rise further
+	if atTop && phase == Material.Gas {
 		w.holdOrDisplace(x, y, selfNode)
 		return true
 	}
 
-	w.setNextNodeToSelf(x, y, utils.Hold) // If at the bottom edge, stay in place
-	return true
+	// Solid/Liquid at bottom edge: can't fall further
+	if atBottom && (phase == Material.Solid || phase == Material.Liquid) {
+		if phase == Material.Solid {
+			w.setNextNodeToSelf(x, y, utils.Hold)
+		} else {
+			w.holdOrDisplace(x, y, selfNode)
+		}
+		return true
+	}
 
+	return false
 }
 
 func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
@@ -244,20 +257,26 @@ func (w *World) directionalNodeCheck(x, y int, dir utils.Direction) bool {
 		return false
 	}
 
-	nextMat := w.getNextNode(x+dx, y+dy).NodeType
-
-	if nextMat != Material.BlankType {
+	if y+dy < 0 || y+dy >= w.height {
 		return false
 	}
 
 	selfMat := w.getCurrentNode(x, y)
 	tgtMat := w.getCurrentNode(x+dx, y+dy)
 
+	// Check material interactions first, even if next buffer is occupied
 	result, ok := Material.MaterialInteractions[[2]Material.NodeType{selfMat.NodeType, tgtMat.NodeType}]
 	if ok && !tgtMat.Dirty {
-		w.holdOrDisplace(x, y, Material.MakeNode(result[0]))
-		w.holdOrDisplace(x+dx, y+dy, Material.MakeNode(result[1]))
+		w.area[y*w.width+x].Dirty = true
+		w.area[(y+dy)*w.width+(x+dx)].Dirty = true
+		w.setNextNodeTo(x, y, 0, 0, Material.MakeNode(result[0]))
+		w.setNextNodeTo(x+dx, y+dy, 0, 0, Material.MakeNode(result[1]))
 		return true
+	}
+
+	nextMat := w.getNextNode(x+dx, y+dy).NodeType
+	if nextMat != Material.BlankType {
+		return false
 	}
 
 	if selfMat.NodeType.GetDensity() > tgtMat.NodeType.GetDensity() {
@@ -311,20 +330,20 @@ func (w *World) trySetDownDiagonal(x, y int) bool {
 func (w *World) nearestBlank(x, y int) (int, bool) {
 	dy := 0
 
-	for !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) && y+dy >= 0 {
+	for y+dy >= 0 && !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) {
 		dy -= 1
 	}
 
-	if dy < 0 {
+	if y+dy >= 0 && dy < 0 {
 		return dy, true
 	}
 
 	dy = 0
-	for !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) && y+dy <= w.height {
+	for y+dy < w.height && !(w.getNextNode(x, y+dy).NodeType == Material.BlankType) {
 		dy += 1
 	}
 
-	if dy > w.height {
+	if y+dy >= w.height {
 		return 0, false
 	}
 
@@ -332,16 +351,20 @@ func (w *World) nearestBlank(x, y int) (int, bool) {
 }
 
 func (w *World) setNextNodeTo(x, y, dx, dy int, setTo Material.Node) {
-	w.area[y*w.width+x].Dirty = true
+	if dx != 0 || dy != 0 {
+		w.area[y*w.width+x].Dirty = true
+	}
 	setTo.Dirty = false
 	w.next[(y+dy)*w.width+x+dx] = setTo
 }
 
 func (w *World) setNextNodeToSelf(x, y int, dir utils.Direction) {
-	w.area[y*w.width+x].Dirty = true
 	setTo := w.area[y*w.width+x]
-	setTo.Dirty = false
 	dx, dy := dir.Delta()
+	if dx != 0 || dy != 0 {
+		w.area[y*w.width+x].Dirty = true
+	}
+	setTo.Dirty = false
 	w.next[(y+dy)*w.width+x+dx] = setTo
 }
 
@@ -350,11 +373,11 @@ func (w *World) getNextNode(x, y int) Material.Node {
 }
 
 func (w *World) inLateralBounds(x, dir int) bool {
-	return x+dir > 0 && x+dir < w.width
+	return x+dir >= 0 && x+dir < w.width
 }
 
 func (w *World) inVerticalBounds(y int) bool {
-	return y+1 < w.height && y-1 > 0
+	return y+1 < w.height && y-1 >= 0
 }
 
 func (w *World) getCurrentNode(x, y int) Material.Node {
